@@ -1,6 +1,7 @@
 # RetroLink Documentation
 
 - [Windows setup and build](../README.md)
+- [DOS and Macintosh build environment setup](setup-environment.md)
 - [Classic Macintosh build](macintosh-build.md)
 - [MS-DOS setup, controls, and tests](../src/RetroLink.Dos/README.md)
 - [Protocol and implementation plan](retrolink-plan.md)

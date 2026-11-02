@@ -26,6 +26,7 @@ a separately installed virtual null-modem driver.
 
 ## Other Platforms
 
+- [DOS and Macintosh build environment setup](docs/setup-environment.md)
 - [Classic Macintosh build](docs/macintosh-build.md): checked-in C/Rez
   sources in `macintosh/src`; requires Retro68 under WSL Ubuntu.
 - [MS-DOS build and tests](src/RetroLink.Dos/README.md): requires Open Watcom;

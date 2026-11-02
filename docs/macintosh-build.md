@@ -3,6 +3,8 @@
 The complete generated C/Rez application is checked in under `macintosh/src`.
 It can be compiled without MacStudio IDE. `macintosh/RetroLinkRemote.cmideproj`
 is retained as the editable form definition; it is not required for compilation.
+For Windows/WSL prerequisites and the current toolchain caveats, see
+[Build Environment Setup](setup-environment.md).
 
 Install WSL Ubuntu and the Retro68 prerequisites described by the toolchain
 script, then run these commands from this project's root in PowerShell:
