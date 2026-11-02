@@ -1,8 +1,7 @@
 # RetroLink
 
 RetroLink is a serial file-transfer application with Windows, classic
-Macintosh, and MS-DOS peers. This directory is a standalone source project;
-it does not require the MacStudio IDE checkout.
+Macintosh, and MS-DOS peers. 
 
 ## Windows
 
