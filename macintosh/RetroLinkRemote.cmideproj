@@ -1,0 +1,316 @@
+{
+  "schemaVersion": 1,
+  "name": "RetroLinkRemote",
+  "targetProfileId": "mac-color-classic-68k",
+  "formTitle": "RetroLink LOCAL",
+  "formTypeName": "RetroLinkForm",
+  "formProperties": {
+    "showTitleBar": true,
+    "resizable": false,
+    "hasCloseBox": true,
+    "hasZoomBox": false,
+    "visible": true,
+    "centerOnScreen": true,
+    "movable": true,
+    "left": 16,
+    "top": 18,
+    "width": 462,
+    "height": 300
+  },
+  "controls": [
+    {
+      "id": "ConnectionStatus",
+      "widgetTypeId": "static-text",
+      "text": "Opening serial port...",
+      "x": 12,
+      "y": 4,
+      "width": 438,
+      "height": 16,
+      "properties": {},
+      "events": {}
+    },
+    {
+      "id": "RoleStatus",
+      "widgetTypeId": "static-text",
+      "text": "Role: waiting for REMOTE",
+      "x": 12,
+      "y": 22,
+      "width": 310,
+      "height": 16,
+      "properties": {},
+      "events": {}
+    },
+    {
+      "id": "TakeControlButton",
+      "widgetTypeId": "button",
+      "text": "Take Control",
+      "x": 338,
+      "y": 20,
+      "width": 112,
+      "height": 20,
+      "properties": {},
+      "events": {
+        "OnClick": "TakeControlClick"
+      }
+    },
+    {
+      "id": "SerialPortLabel",
+      "widgetTypeId": "static-text",
+      "text": "Port",
+      "x": 12,
+      "y": 44,
+      "width": 34,
+      "height": 16,
+      "properties": {},
+      "events": {}
+    },
+    {
+      "id": "SerialPortSelector",
+      "widgetTypeId": "popup-menu",
+      "text": "Printer (Serial B)",
+      "x": 48,
+      "y": 42,
+      "width": 116,
+      "height": 20,
+      "properties": {
+        "items": "Modem (Serial A)\nPrinter (Serial B)",
+        "selectedIndex": "1"
+      },
+      "events": {}
+    },
+    {
+      "id": "SerialBaudLabel",
+      "widgetTypeId": "static-text",
+      "text": "Baud",
+      "x": 168,
+      "y": 44,
+      "width": 36,
+      "height": 16,
+      "properties": {},
+      "events": {}
+    },
+    {
+      "id": "SerialBaudSelector",
+      "widgetTypeId": "popup-menu",
+      "text": "9600",
+      "x": 206,
+      "y": 42,
+      "width": 72,
+      "height": 20,
+      "properties": {
+        "items": "300\n600\n1200\n1800\n2400\n3600\n4800\n7200\n9600\n14400\n19200\n28800\n38400\n57600",
+        "selectedIndex": "8"
+      },
+      "events": {}
+    },
+    {
+      "id": "SerialSettingsButton",
+      "widgetTypeId": "button",
+      "text": "Apply",
+      "x": 282,
+      "y": 40,
+      "width": 70,
+      "height": 24,
+      "properties": {},
+      "events": {
+        "OnClick": "SerialSettingsClick"
+      }
+    },
+    {
+      "id": "SerialCloseButton",
+      "widgetTypeId": "button",
+      "text": "Close",
+      "x": 358,
+      "y": 40,
+      "width": 92,
+      "height": 24,
+      "properties": {},
+      "events": {
+        "OnClick": "SerialCloseClick"
+      }
+    },
+    {
+      "id": "MacVolumesLabel",
+      "widgetTypeId": "static-text",
+      "text": "LOCAL",
+      "x": 12,
+      "y": 68,
+      "width": 210,
+      "height": 16,
+      "properties": {},
+      "events": {}
+    },
+    {
+      "id": "MacFiles",
+      "widgetTypeId": "list-box",
+      "text": "",
+      "x": 12,
+      "y": 86,
+      "width": 210,
+      "height": 114,
+      "properties": {
+        "items": "Startup Disk"
+      },
+      "events": {}
+    },
+    {
+      "id": "HostFilesLabel",
+      "widgetTypeId": "static-text",
+      "text": "REMOTE",
+      "x": 234,
+      "y": 68,
+      "width": 216,
+      "height": 16,
+      "properties": {},
+      "events": {}
+    },
+    {
+      "id": "HostFiles",
+      "widgetTypeId": "list-box",
+      "text": "",
+      "x": 234,
+      "y": 86,
+      "width": 216,
+      "height": 114,
+      "properties": {
+        "items": "Waiting for host listing"
+      },
+      "events": {
+        "OnClick": "HostFilesClick"
+      }
+    },
+    {
+      "id": "RefreshMacButton",
+      "widgetTypeId": "button",
+      "text": "[L] Refresh",
+      "x": 12,
+      "y": 204,
+      "width": 100,
+      "height": 24,
+      "properties": {},
+      "events": {
+        "OnClick": "RefreshMacClick"
+      }
+    },
+    {
+      "id": "RefreshHostButton",
+      "widgetTypeId": "button",
+      "text": "[R] Refresh",
+      "x": 120,
+      "y": 204,
+      "width": 100,
+      "height": 24,
+      "properties": {},
+      "events": {
+        "OnClick": "RefreshHostClick"
+      }
+    },
+    {
+      "id": "TransferProgressBar",
+      "widgetTypeId": "progress-bar",
+      "text": "",
+      "x": 12,
+      "y": 264,
+      "width": 438,
+      "height": 14,
+      "properties": {
+        "value": "0"
+      },
+      "events": {}
+    },
+    {
+      "id": "ActionStatus",
+      "widgetTypeId": "static-text",
+      "text": "Waiting for the REMOTE RetroLink session.",
+      "x": 12,
+      "y": 282,
+      "width": 438,
+      "height": 16,
+      "properties": {},
+      "events": {}
+    },
+    {
+      "id": "CopyToHostButton",
+      "widgetTypeId": "button",
+      "text": "[C] Copy REMOTE",
+      "x": 234,
+      "y": 204,
+      "width": 120,
+      "height": 24,
+      "properties": {},
+      "events": {
+        "OnClick": "CopyToDosClick"
+      }
+    },
+    {
+      "id": "CreateFolderButton",
+      "widgetTypeId": "button",
+      "text": "[N] New Folder",
+      "x": 12,
+      "y": 234,
+      "width": 110,
+      "height": 24,
+      "properties": {},
+      "events": {
+        "OnClick": "CreateMacFolderClick"
+      }
+    },
+    {
+      "id": "RenameEntryButton",
+      "widgetTypeId": "button",
+      "text": "[R] Rename",
+      "x": 128,
+      "y": 234,
+      "width": 100,
+      "height": 24,
+      "properties": {},
+      "events": {
+        "OnClick": "RenameMacEntryClick"
+      }
+    },
+    {
+      "id": "DeleteEntryButton",
+      "widgetTypeId": "button",
+      "text": "[D] Delete",
+      "x": 234,
+      "y": 234,
+      "width": 100,
+      "height": 24,
+      "properties": {},
+      "events": {
+        "OnClick": "DeleteMacEntryClick"
+      }
+    }
+  ],
+  "components": [
+    {
+      "id": "SerialPort1",
+      "componentTypeId": "serial-port",
+      "properties": {
+        "port": "Modem",
+        "baud": "9600",
+        "dataBits": "8",
+        "parity": "None",
+        "stopBits": "1",
+        "flowControl": "None"
+      },
+      "events": {
+        "OnDataAvailable": "SerialDataAvailable",
+        "OnError": "SerialError"
+      }
+    },
+    {
+      "id": "ProtocolTransfer1",
+      "componentTypeId": "protocol-transfer",
+      "properties": {
+        "serialPortId": "SerialPort1",
+        "fileName": "TRANSFER.BIN",
+        "protocol": "XmodemCRC",
+        "timeoutSeconds": "10"
+      },
+      "events": {
+        "OnProgress": "TransferProgress"
+      }
+    }
+  ]
+}

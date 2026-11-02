@@ -1,0 +1,77 @@
+# User-managed emulator/build settings may contain personal paths.
+feasibility/profile-config.local.json
+
+# Ignore local hidden directories while keeping repository configuration.
+**/.*/
+!/.azure/
+!/.azure/**
+!/.github/
+!/.github/**
+!/.vscode/
+!/.vscode/**
+# Keep nested hidden folders ignored even inside those configuration trees.
+**/.*/
+!/.azure/
+!/.github/
+!/.vscode/
+
+# .NET build outputs.
+**/bin/
+**/obj/
+
+# Native and general build outputs.
+**/build/
+**/cmake-build-*/
+**/out/
+**/dist/
+**/TestResults/
+**/CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+build.ninja
+.ninja_deps
+.ninja_log
+compile_commands.json
+__wcl__.lnk
+*.exe
+*.dll
+*.pdb
+*.obj
+*.o
+*.a
+*.lib
+*.so
+*.dylib
+*.com
+*.sys
+*.elf
+*.hex
+*.map
+*.lst
+*.sym
+*.bin
+*.ad
+*.appl
+*.APPL
+*.ilk
+*.pch
+*.idb
+*.res
+*.err
+*.hda
+*.d
+*.log
+*.tmp
+__pycache__/
+*.py[cod]
+node_modules/
+coverage/
+
+# Local emulator binaries and temporary test media.
+.local-tools/
+
+# Classic Mac system software, ROMs, and generated disk artifacts are user-provided
+# or build outputs; never include them in this project.
+*.rom
+*.ROM
+*.dsk

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RetroLink/RetroLink.csproj" />
+    <Project Path="src/ClassicMacIde.Core/ClassicMacIde.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ClassicMacIde.Core.Tests/ClassicMacIde.Core.Tests.csproj" />
+  </Folder>
+</Solution>
