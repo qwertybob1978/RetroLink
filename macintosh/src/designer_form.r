@@ -22,7 +22,7 @@ resource 'DITL' (128) {
     {
         { 24, 12, 40, 450 }, StaticText { enabled, "Opening serial port..." };
         { 42, 12, 58, 322 }, StaticText { enabled, "Role: waiting for REMOTE" };
-        { 40, 338, 60, 450 }, Button { enabled, "Take Control" };
+        { 40, 426, 64, 450 }, Button { enabled, "" };
         { 64, 12, 80, 46 }, StaticText { enabled, "Port" };
         { 62, 48, 82, 164 }, Button { enabled, "Printer (Serial B)" };
         { 64, 168, 80, 204 }, StaticText { enabled, "Baud" };
@@ -33,14 +33,21 @@ resource 'DITL' (128) {
         { 106, 12, 220, 222 }, UserItem { enabled };
         { 88, 234, 104, 450 }, StaticText { enabled, "REMOTE" };
         { 106, 234, 220, 450 }, UserItem { enabled };
-        { 224, 12, 246, 112 }, Button { enabled, "[L] Refresh" };
-        { 224, 120, 246, 220 }, Button { enabled, "[R] Refresh" };
+        { 224, 12, 248, 36 }, Button { enabled, "" };
+        { 224, 196, 248, 220 }, Button { enabled, "" };
         { 284, 12, 298, 450 }, UserItem { enabled };
         { 302, 12, 318, 450 }, StaticText { enabled, "Waiting for the REMOTE RetroLink session." };
-        { 224, 234, 246, 354 }, Button { enabled, "[C] Copy REMOTE" };
-        { 254, 12, 276, 122 }, Button { enabled, "[N] New Folder" };
-        { 254, 128, 276, 228 }, Button { enabled, "[R] Rename" };
-        { 254, 234, 276, 334 }, Button { enabled, "[D] Delete" }
+        { 224, 234, 248, 258 }, Button { enabled, "" };
+        { 254, 12, 278, 36 }, Button { enabled, "" };
+        { 254, 40, 278, 64 }, Button { enabled, "" };
+        { 254, 68, 278, 92 }, Button { enabled, "" };
+        { 40, 426, 64, 450 }, UserItem { enabled };
+        { 224, 12, 248, 36 }, UserItem { enabled };
+        { 224, 196, 248, 220 }, UserItem { enabled };
+        { 224, 234, 248, 258 }, UserItem { enabled };
+        { 254, 12, 278, 36 }, UserItem { enabled };
+        { 254, 40, 278, 64 }, UserItem { enabled };
+        { 254, 68, 278, 92 }, UserItem { enabled }
     }
 };
 

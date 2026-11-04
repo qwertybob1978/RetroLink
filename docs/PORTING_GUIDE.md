@@ -178,10 +178,10 @@ Capability bits:
 | `0x00000080` | Host-initiated REMOTE-to-LOCAL copy request |
 
 Unknown capability bits are ignored. Advertise only features that the peer
-can actually perform. The current Mac peer's HELLO_ACK advertises `0x41`;
-this does not enumerate every operation it implements, so capability bits
-are not a complete feature-negotiation mechanism across all existing builds.
-Validate the requested operation and return a failure if it is unsupported.
+can actually perform. The current Mac peer's HELLO_ACK advertises `0xC1`,
+including host-initiated copy requests. Capability bits do not enumerate every
+operation implemented by all existing builds; validate the requested
+operation and return a failure if it is unsupported.
 
 The supported-baud flags use bit positions in this order:
 bit 0 = 300, 1 = 600, 2 = 1200, 3 = 1800, 4 = 2400, 5 = 3600, 6 = 4800,
@@ -438,8 +438,9 @@ overwrite:u8
 The target verifies the role epoch, active endpoint, source and destination
 endpoint IDs, provider IDs, safe paths, and destination name before accepting.
 Advertise capability `0x00000080` only when `COPY_REQUEST` is implemented.
-The RT1170 target and Windows app support this extension; older Mac/DOS peers
-do not currently implement it and must ignore the unknown message type.
+The RT1170 target, Windows app, and Classic Mac peer support this extension;
+the DOS peer does not currently implement it and ignores the unknown message
+type.
 `COPY_REQUEST_RESULT` contains exactly `resultCode:u16` and uses the same
 request ID. Result 0 means the request was accepted; the target then sends
 `COPY_PREPARE` with that same ID after it has read and checksummed the source.

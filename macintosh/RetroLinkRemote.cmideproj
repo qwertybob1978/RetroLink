@@ -43,12 +43,14 @@
     {
       "id": "TakeControlButton",
       "widgetTypeId": "button",
-      "text": "Take Control",
-      "x": 338,
+      "text": "",
+      "x": 426,
       "y": 20,
-      "width": 112,
-      "height": 20,
-      "properties": {},
+      "width": 24,
+      "height": 24,
+      "properties": {
+        "iconId": "account-switch"
+      },
       "events": {
         "OnClick": "TakeControlClick"
       }
@@ -182,12 +184,14 @@
     {
       "id": "RefreshMacButton",
       "widgetTypeId": "button",
-      "text": "[L] Refresh",
+      "text": "",
       "x": 12,
       "y": 204,
-      "width": 100,
+      "width": 24,
       "height": 24,
-      "properties": {},
+      "properties": {
+        "iconId": "refresh"
+      },
       "events": {
         "OnClick": "RefreshMacClick"
       }
@@ -195,12 +199,14 @@
     {
       "id": "RefreshHostButton",
       "widgetTypeId": "button",
-      "text": "[R] Refresh",
-      "x": 120,
+      "text": "",
+      "x": 196,
       "y": 204,
-      "width": 100,
+      "width": 24,
       "height": 24,
-      "properties": {},
+      "properties": {
+        "iconId": "refresh"
+      },
       "events": {
         "OnClick": "RefreshHostClick"
       }
@@ -232,12 +238,14 @@
     {
       "id": "CopyToHostButton",
       "widgetTypeId": "button",
-      "text": "[C] Copy REMOTE",
+      "text": "",
       "x": 234,
       "y": 204,
-      "width": 120,
+      "width": 24,
       "height": 24,
-      "properties": {},
+      "properties": {
+        "iconId": "upload"
+      },
       "events": {
         "OnClick": "CopyToDosClick"
       }
@@ -245,12 +253,14 @@
     {
       "id": "CreateFolderButton",
       "widgetTypeId": "button",
-      "text": "[N] New Folder",
+      "text": "",
       "x": 12,
       "y": 234,
-      "width": 110,
+      "width": 24,
       "height": 24,
-      "properties": {},
+      "properties": {
+        "iconId": "folder-plus"
+      },
       "events": {
         "OnClick": "CreateMacFolderClick"
       }
@@ -258,12 +268,14 @@
     {
       "id": "RenameEntryButton",
       "widgetTypeId": "button",
-      "text": "[R] Rename",
-      "x": 128,
+      "text": "",
+      "x": 40,
       "y": 234,
-      "width": 100,
+      "width": 24,
       "height": 24,
-      "properties": {},
+      "properties": {
+        "iconId": "pencil"
+      },
       "events": {
         "OnClick": "RenameMacEntryClick"
       }
@@ -271,12 +283,14 @@
     {
       "id": "DeleteEntryButton",
       "widgetTypeId": "button",
-      "text": "[D] Delete",
-      "x": 234,
+      "text": "",
+      "x": 68,
       "y": 234,
-      "width": 100,
+      "width": 24,
       "height": 24,
-      "properties": {},
+      "properties": {
+        "iconId": "delete"
+      },
       "events": {
         "OnClick": "DeleteMacEntryClick"
       }

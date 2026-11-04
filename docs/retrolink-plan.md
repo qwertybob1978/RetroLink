@@ -285,10 +285,10 @@ change session or role state. Except for HELLO, stale session IDs are ignored.
   `0x00000004=RENAME`, `0x00000008=DELETE`, `0x00000010=XMODEM-CRC`,
   `0x00000020=MacBinary-II`, `0x00000040=role handover`, and
   `0x00000080=host-initiated REMOTE-to-LOCAL copy`. Unknown capabilities are
-  ignored. The RT1170 target and Windows app implement the new copy-request
-  extension; existing Mac/DOS peers do not. Supported-baud flag bits, low to
-  high, represent 300, 600, 1200, 1800, 2400, 3600, 4800, 7200, 9600, 14400,
-  19200, 28800, 38400, and 57600 baud.
+  ignored. The RT1170 target, Windows app, and Classic Mac peer implement the
+  copy-request extension; the DOS peer does not. Supported-baud flag bits,
+  low to high, represent 300, 600, 1200, 1800, 2400, 3600, 4800, 7200, 9600,
+  14400, 19200, 28800, 38400, and 57600 baud.
 - `ROLE_REQUEST` contains endpoint ID (16 bytes), expected role epoch (u32),
   and reason (u8: key, command, or explicit takeover). The Mac sends a request
   to the Windows coordinator; Windows UI input is applied locally by that

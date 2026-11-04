@@ -25,6 +25,8 @@ short MacStudioSetControlValue(DialogPtr dialog, const char *controlId, short va
 short MacStudioGetControlBounds(DialogPtr dialog, const char *controlId, Rect *bounds);
 /** Sets control bounds relative to the form's content area. */
 short MacStudioSetControlBounds(DialogPtr dialog, const char *controlId, const Rect *bounds);
+/** Draws a packed 1-bit icon over a native push button. */
+short MacStudioSetControlIcon(DialogPtr dialog, const char *controlId, short iconId);
 
 #define MACSTUDIO_ID_CONTROLCONNECTIONSTATUS "ConnectionStatus"
 /** Stable-ID accessor set for the Static Text instance 'ConnectionStatus'. */

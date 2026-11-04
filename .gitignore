@@ -75,3 +75,5 @@ coverage/
 *.rom
 *.ROM
 *.dsk
+.github/copilot-instructions.md
+docs/retrolink-plan.md

@@ -11,6 +11,7 @@
 #include <Windows.h>
 #include <string.h>
 #include "designer_form.h"
+#include "retro_icons.h"
 
 static void DispatchUserControlEvent(DialogPtr dialog, short item);
 static void DispatchNonVisualComponentEvent(DialogPtr dialog, short componentIndex, short eventIndex);
@@ -257,7 +258,11 @@ static Str255 gPopupTitle7;
 static ListHandle gList11 = NULL;
 static ListHandle gList13 = NULL;
 static short gProgressValue16 = 0;
+static short gIconIdByItem[29];
+static const short gIconButtonItems[] = {3, 14, 15, 18, 19, 20, 21};
+static const short gIconOverlayItems[] = {22, 23, 24, 25, 26, 27, 28};
 static pascal void DrawProgressBar16(DialogPtr dialog, short item);
+static pascal void DrawIconOverlay(DialogPtr dialog, short item);
 
 static pascal void DrawProgressBar16(DialogPtr dialog, short item)
 {
@@ -290,6 +295,55 @@ static pascal void DrawProgressBar16(DialogPtr dialog, short item)
             (long)(fillBounds.right - fillBounds.left) * gProgressValue16 / 100);
         if (fillBounds.right > fillBounds.left)
             PaintRect(&fillBounds);
+    }
+    SetPort(previousPort);
+}
+
+static pascal void DrawIconOverlay(DialogPtr dialog, short item)
+{
+    short itemType;
+    Handle itemHandle;
+    Rect bounds;
+    Rect runBounds;
+    GrafPtr previousPort;
+    const unsigned short *rows;
+    short row;
+    short column;
+
+    GetDialogItem(dialog, item, &itemType, &itemHandle, &bounds);
+    (void)itemType;
+    (void)itemHandle;
+    rows = RetroLinkGetIconRows(gIconIdByItem[item]);
+    if (rows == NULL)
+        return;
+
+    GetPort(&previousPort);
+    SetPort((GrafPtr)dialog);
+    PenNormal();
+    ForeColor(blackColor);
+    for (row = 0; row < RETROLINK_ICON_HEIGHT; row++)
+    {
+        column = 0;
+        while (column < RETROLINK_ICON_WIDTH)
+        {
+            short startColumn;
+            if ((rows[row] & (0x8000U >> column)) == 0)
+            {
+                column++;
+                continue;
+            }
+            startColumn = column;
+            while (column < RETROLINK_ICON_WIDTH &&
+                   (rows[row] & (0x8000U >> column)) != 0)
+                column++;
+            SetRect(
+                &runBounds,
+                (short)(bounds.left + startColumn),
+                (short)(bounds.top + row),
+                (short)(bounds.left + column),
+                (short)(bounds.top + row + 1));
+            PaintRect(&runBounds);
+        }
     }
     SetPort(previousPort);
 }
@@ -448,6 +502,66 @@ static short BridgeControlItem(const char *id)
     return 0;
 }
 
+static short IconOverlayItemForButton(short buttonItem)
+{
+    short index;
+    for (index = 0;
+         index < (short)(sizeof(gIconButtonItems) / sizeof(gIconButtonItems[0]));
+         index++)
+    {
+        if (gIconButtonItems[index] == buttonItem)
+            return gIconOverlayItems[index];
+    }
+    return 0;
+}
+
+short MacStudioSetControlIcon(
+    DialogPtr dialog,
+    const char *controlId,
+    short iconId)
+{
+    short buttonItem;
+    short overlayItem;
+    short buttonType;
+    short overlayType;
+    Handle buttonHandle;
+    Handle overlayHandle;
+    Rect buttonBounds;
+    Rect iconBounds;
+
+    if (dialog == NULL || controlId == NULL ||
+        RetroLinkGetIconRows(iconId) == NULL)
+        return paramErr;
+    buttonItem = BridgeControlItem(controlId);
+    overlayItem = IconOverlayItemForButton(buttonItem);
+    if (overlayItem == 0)
+        return paramErr;
+
+    GetDialogItem(dialog, buttonItem, &buttonType, &buttonHandle, &buttonBounds);
+    if ((buttonType & ctrlItem) == 0 || buttonHandle == NULL ||
+        buttonBounds.right - buttonBounds.left < RETROLINK_ICON_WIDTH ||
+        buttonBounds.bottom - buttonBounds.top < RETROLINK_ICON_HEIGHT)
+        return paramErr;
+    GetDialogItem(dialog, overlayItem, &overlayType, &overlayHandle, &iconBounds);
+    (void)overlayHandle;
+
+    iconBounds.left = (short)(buttonBounds.left +
+        ((buttonBounds.right - buttonBounds.left) - RETROLINK_ICON_WIDTH) / 2);
+    iconBounds.top = (short)(buttonBounds.top +
+        ((buttonBounds.bottom - buttonBounds.top) - RETROLINK_ICON_HEIGHT) / 2);
+    iconBounds.right = (short)(iconBounds.left + RETROLINK_ICON_WIDTH);
+    iconBounds.bottom = (short)(iconBounds.top + RETROLINK_ICON_HEIGHT);
+    gIconIdByItem[overlayItem] = iconId;
+    SetDialogItem(
+        dialog,
+        overlayItem,
+        overlayType,
+        (Handle)DrawIconOverlay,
+        &iconBounds);
+    InvalidateDesignerDialogItem(dialog, overlayItem);
+    return noErr;
+}
+
 static const char *BridgeControlId(short item)
 {
     switch (item)
@@ -497,6 +611,57 @@ static const char *BridgeControlId(short item)
         default:
             return "";
     }
+}
+
+static short TrackIconButton(DialogPtr dialog, Point globalMouse)
+{
+    Point localMouse = globalMouse;
+    GrafPtr previousPort;
+    short index;
+    short buttonItem;
+    short itemType;
+    Handle itemHandle;
+    Rect bounds;
+    short trackedValue;
+    int result;
+    const char *controlId;
+
+    GetPort(&previousPort);
+    SetPort((GrafPtr)dialog);
+    GlobalToLocal(&localMouse);
+    for (index = 0;
+         index < (short)(sizeof(gIconButtonItems) / sizeof(gIconButtonItems[0]));
+         index++)
+    {
+        buttonItem = gIconButtonItems[index];
+        GetDialogItem(dialog, buttonItem, &itemType, &itemHandle, &bounds);
+        if (!PtInRect(localMouse, &bounds))
+            continue;
+
+        trackedValue = TrackControl(
+            (ControlHandle)itemHandle,
+            globalMouse,
+            (ControlActionUPP)0);
+        SetPort((GrafPtr)dialog);
+        DrawIconOverlay(dialog, gIconOverlayItems[index]);
+        SetPort(previousPort);
+        if (trackedValue != 0)
+        {
+            result = HandleDesignerControl(buttonItem);
+            if (result == 0)
+                DispatchUserControlEvent(dialog, buttonItem);
+            ApplyRadioGroupSelection(buttonItem);
+            controlId = BridgeControlId(buttonItem);
+            if (*controlId != '\0')
+                BridgeWriteEvent(
+                    "CLICK",
+                    controlId,
+                    result == 0 ? "HANDLED" : "UNHANDLED");
+        }
+        return 1;
+    }
+    SetPort(previousPort);
+    return 0;
 }
 
 static void InvalidateDesignerDialogItem(DialogPtr dialog, short item)
@@ -2076,6 +2241,41 @@ int MacStudioRunForm(void)
     gDesignerDialog = dialog;
     ShowWindow((WindowPtr)dialog);
     bridgeStarted = BridgeStart();
+    if (MacStudioSetControlIcon(
+            dialog,
+            "TakeControlButton",
+            RETROLINK_ICON_ACCOUNT_SWITCH) != noErr ||
+        MacStudioSetControlIcon(
+            dialog,
+            "RefreshMacButton",
+            RETROLINK_ICON_REFRESH) != noErr ||
+        MacStudioSetControlIcon(
+            dialog,
+            "RefreshHostButton",
+            RETROLINK_ICON_REFRESH) != noErr ||
+        MacStudioSetControlIcon(
+            dialog,
+            "CopyToHostButton",
+            RETROLINK_ICON_UPLOAD) != noErr ||
+        MacStudioSetControlIcon(
+            dialog,
+            "CreateFolderButton",
+            RETROLINK_ICON_FOLDER_PLUS) != noErr ||
+        MacStudioSetControlIcon(
+            dialog,
+            "RenameEntryButton",
+            RETROLINK_ICON_PENCIL) != noErr ||
+        MacStudioSetControlIcon(
+            dialog,
+            "DeleteEntryButton",
+            RETROLINK_ICON_DELETE) != noErr)
+    {
+        BridgeWriteError("ICON_INIT", "Could not initialize icon buttons");
+        BridgeFinish();
+        CleanupDesignerWidgets(dialog);
+        DisposeDialog(dialog);
+        return 1;
+    }
 
     gPopupMenu5 = GetMenu(261);
     gPopupSelection5 = 1;
@@ -2179,6 +2379,9 @@ int MacStudioRunForm(void)
                         formRunning = 0;
                     continue;
                 }
+                if (windowPart == inContent &&
+                    TrackIconButton(dialog, event.where))
+                    continue;
             }
         }
         if (gMacStudioSerialOpen1)

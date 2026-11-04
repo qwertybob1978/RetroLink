@@ -36,6 +36,8 @@
 #define RETROLINK_TRANSFER_READY 0x21
 #define RETROLINK_TRANSFER_COMPLETE 0x22
 #define RETROLINK_COPY_PREPARE 0x20
+#define RETROLINK_COPY_REQUEST 0x24
+#define RETROLINK_COPY_REQUEST_RESULT 0x25
 
 static unsigned char gFrameBuffer[RETROLINK_MAX_FRAME];
 static long gFrameLength = 0;
@@ -1367,7 +1369,7 @@ static void SendHelloAck(RetroLinkForm form, const unsigned char *helloPayload)
     payload[5] = (unsigned char)systemMinor;
     WriteBigEndian16(payload + 6, (unsigned short)machineType);
     memcpy(payload + 8, gLocalEndpointId, 16);
-    WriteBigEndian32(payload + 24, 0x00000041);
+    WriteBigEndian32(payload + 24, 0x000000C1);
     WriteBigEndian32(payload + 28, 0x00000100);
     WriteBigEndian32(payload + 32, 0);
     payload[36] = 0;
@@ -3178,6 +3180,247 @@ void CopyToDosClick(RetroLinkForm form, short item)
     WaitForOutboundTransfer(form);
 }
 
+static OSErr SendCopyRequestResult(
+    unsigned long requestId,
+    unsigned short resultCode)
+{
+    unsigned char payload[2];
+    WriteBigEndian16(payload, resultCode);
+    return SendFrame(
+        RETROLINK_COPY_REQUEST_RESULT,
+        requestId,
+        payload,
+        sizeof(payload));
+}
+
+static short SkipHostDestinationPath(
+    const unsigned char *payload,
+    unsigned short payloadLength,
+    unsigned short *offset)
+{
+    unsigned short pathStart = *offset;
+    unsigned char componentCount;
+    unsigned char index;
+
+    if (payloadLength - *offset < 5 ||
+        ReadBigEndian32(payload + *offset) != RETROLINK_WINDOWS_SHARE_PROVIDER)
+        return 0;
+    componentCount = payload[*offset + 4];
+    if (componentCount > RETROLINK_MAC_MAX_PATH_COMPONENTS)
+        return 0;
+    *offset = (unsigned short)(*offset + 5);
+    for (index = 0; index < componentCount; index++)
+    {
+        unsigned char componentLength;
+        const unsigned char *component;
+        if (*offset >= payloadLength)
+            return 0;
+        componentLength = payload[(*offset)++];
+        if (componentLength == 0 ||
+            payloadLength - *offset < componentLength)
+            return 0;
+        component = payload + *offset;
+        if (!IsValidUtf8Name(component, componentLength, 0) ||
+            (componentLength == 1 && component[0] == '.') ||
+            (componentLength == 2 &&
+             component[0] == '.' && component[1] == '.'))
+            return 0;
+        *offset = (unsigned short)(*offset + componentLength);
+    }
+    return *offset - pathStart <= RETROLINK_MAC_MAX_PATH_BYTES;
+}
+
+static void HandleCopyRequest(
+    RetroLinkForm form,
+    const unsigned char *payload,
+    unsigned short payloadLength,
+    unsigned long requestId)
+{
+    unsigned short offset = 36;
+    unsigned short nameEnd;
+    unsigned char sourceComponents[RETROLINK_MAC_MAX_PATH_COMPONENTS][32];
+    unsigned char preparePayload[RETROLINK_MAX_PAYLOAD];
+    unsigned char destinationNameLength;
+    unsigned char overwrite;
+    short sourceVolumeIndex = -1;
+    short sourcePathCount = 0;
+    short fileRefNum = 0;
+    long sourceParentId = 0;
+    long readCount;
+    unsigned long fileLength;
+    unsigned long crc32;
+    unsigned short prepareLength;
+    CInfoPBRec catalogInfo;
+    FSSpec fileSpec;
+    Ptr transferBuffer = NULL;
+    OSErr error;
+
+    if (gOutboundTransferPending || gPendingHostOperation)
+    {
+        SendCopyRequestResult(requestId, 1);
+        SetText(form, "ActionStatus", "REMOTE is busy with another operation.");
+        return;
+    }
+    if (requestId == 0 || payloadLength < 36)
+    {
+        SendCopyRequestResult(requestId, 2);
+        SetText(form, "ActionStatus", "Rejected an invalid REMOTE download request.");
+        return;
+    }
+    if (ReadBigEndian32(payload) != gRoleEpoch ||
+        memcmp(payload + 4, gHostEndpointId, 16) != 0 ||
+        memcmp(gActiveEndpointId, gHostEndpointId, 16) != 0)
+    {
+        SendCopyRequestResult(requestId, 3);
+        SetText(form, "ActionStatus", "Rejected a download request from a non-active endpoint.");
+        return;
+    }
+    if (memcmp(payload + 20, gLocalEndpointId, 16) != 0)
+    {
+        SendCopyRequestResult(requestId, 2);
+        SetText(form, "ActionStatus", "Rejected a download request for an unknown source endpoint.");
+        return;
+    }
+    if (!ReadTransferMacPath(
+            payload,
+            payloadLength,
+            &offset,
+            &sourceVolumeIndex,
+            &sourcePathCount,
+            sourceComponents) ||
+        sourcePathCount == 0 ||
+        payloadLength - offset < 16 ||
+        memcmp(payload + offset, gHostEndpointId, 16) != 0)
+    {
+        SendCopyRequestResult(requestId, 2);
+        SetText(form, "ActionStatus", "Rejected an invalid REMOTE source path.");
+        return;
+    }
+    offset = (unsigned short)(offset + 16);
+    if (!SkipHostDestinationPath(payload, payloadLength, &offset) ||
+        payloadLength - offset < 2)
+    {
+        SendCopyRequestResult(requestId, 2);
+        SetText(form, "ActionStatus", "Rejected an invalid LOCAL destination path.");
+        return;
+    }
+    destinationNameLength = payload[offset++];
+    if (destinationNameLength == 0 ||
+        payloadLength - offset != destinationNameLength + 1 ||
+        !IsValidUtf8Name(payload + offset, destinationNameLength, 0) ||
+        (destinationNameLength == 1 && payload[offset] == '.') ||
+        (destinationNameLength == 2 &&
+         payload[offset] == '.' && payload[offset + 1] == '.'))
+    {
+        SendCopyRequestResult(requestId, 2);
+        SetText(form, "ActionStatus", "Rejected an invalid LOCAL destination name.");
+        return;
+    }
+    nameEnd = (unsigned short)(offset + destinationNameLength);
+    overwrite = payload[nameEnd];
+    if (overwrite > 1 || nameEnd + 15 > RETROLINK_MAX_PAYLOAD)
+    {
+        SendCopyRequestResult(requestId, 2);
+        SetText(form, "ActionStatus", "Rejected an invalid REMOTE download request.");
+        return;
+    }
+
+    error = ResolveMacDirectory(
+        sourceVolumeIndex,
+        sourcePathCount - 1,
+        (const unsigned char (*)[32])sourceComponents,
+        &sourceParentId);
+    if (error == noErr)
+        error = GetMacNamedEntry(
+            sourceVolumeIndex,
+            sourceParentId,
+            sourceComponents[sourcePathCount - 1],
+            &catalogInfo);
+    if (error != noErr ||
+        (catalogInfo.hFileInfo.ioFlAttrib & RETROLINK_MAC_DIRECTORY_FLAG) != 0 ||
+        catalogInfo.hFileInfo.ioFlLgLen <= 0 ||
+        (unsigned long)catalogInfo.hFileInfo.ioFlLgLen >
+            RETROLINK_TRANSFER_MAX_BYTES)
+    {
+        SendCopyRequestResult(requestId, 4);
+        SetText(form, "ActionStatus", "REMOTE could not prepare the requested file.");
+        return;
+    }
+
+    fileLength = (unsigned long)catalogInfo.hFileInfo.ioFlLgLen;
+    transferBuffer = NewPtr((long)fileLength);
+    if (transferBuffer == NULL || MemError() != noErr)
+    {
+        SendCopyRequestResult(requestId, 4);
+        SetText(form, "ActionStatus", "Not enough REMOTE memory to prepare the download.");
+        return;
+    }
+
+    memset(&fileSpec, 0, sizeof(fileSpec));
+    fileSpec.vRefNum = gMacVolumes[sourceVolumeIndex].volumeRefNum;
+    fileSpec.parID = sourceParentId;
+    memcpy(
+        fileSpec.name,
+        sourceComponents[sourcePathCount - 1],
+        sourceComponents[sourcePathCount - 1][0] + 1);
+    error = FSpOpenDF(&fileSpec, fsRdPerm, &fileRefNum);
+    if (error == noErr)
+    {
+        readCount = (long)fileLength;
+        error = FSRead(fileRefNum, &readCount, (Ptr)transferBuffer);
+        if (error == noErr && readCount != (long)fileLength)
+            error = ioErr;
+    }
+    if (fileRefNum != 0)
+    {
+        OSErr closeError = FSClose(fileRefNum);
+        if (error == noErr)
+            error = closeError;
+        fileRefNum = 0;
+    }
+    if (error != noErr)
+    {
+        DisposePtr(transferBuffer);
+        SendCopyRequestResult(requestId, 4);
+        SetText(form, "ActionStatus", "REMOTE could not read the requested file.");
+        return;
+    }
+
+    crc32 = CalculateCrc32((const unsigned char *)transferBuffer, (long)fileLength);
+    memcpy(preparePayload, payload, nameEnd);
+    WriteBigEndian64(preparePayload + nameEnd, fileLength);
+    WriteBigEndian32(preparePayload + nameEnd + 8, crc32);
+    preparePayload[nameEnd + 12] = 0;
+    preparePayload[nameEnd + 13] = overwrite;
+    preparePayload[nameEnd + 14] = 1;
+    prepareLength = (unsigned short)(nameEnd + 15);
+
+    gOutboundTransferPending = true;
+    gOutboundTransferReady = false;
+    gOutboundTransferSent = false;
+    gOutboundTransferRequestId = requestId;
+    gOutboundTransferLength = fileLength;
+    gOutboundTransferCrc = crc32;
+    gOutboundTransferBuffer = transferBuffer;
+    MacStudioSetControlValue(form, "TransferProgressBar", 0);
+    if (SendCopyRequestResult(requestId, 0) != noErr)
+    {
+        FailOutboundTransfer(form, "Could not acknowledge the REMOTE download request.");
+        return;
+    }
+    if (SendFrame(
+            RETROLINK_COPY_PREPARE,
+            requestId,
+            preparePayload,
+            prepareLength) != noErr)
+    {
+        FailOutboundTransfer(form, "Could not prepare the REMOTE download.");
+        return;
+    }
+    SetText(form, "ActionStatus", "Waiting for LOCAL to prepare the download...");
+    WaitForOutboundTransfer(form);
+}
+
 static void HandleRoleState(RetroLinkForm form, const unsigned char *payload, unsigned short length)
 {
     unsigned long roleEpoch;
@@ -3303,6 +3546,12 @@ static void HandleFrame(
             messageType);
     else if (messageType == RETROLINK_COPY_PREPARE)
         HandleCopyPrepare(
+            form,
+            payload,
+            payloadLength,
+            ReadBigEndian32(frame + 24));
+    else if (messageType == RETROLINK_COPY_REQUEST)
+        HandleCopyRequest(
             form,
             payload,
             payloadLength,
