@@ -175,6 +175,7 @@ Capability bits:
 | `0x00000010` | XMODEM-CRC |
 | `0x00000020` | MacBinary II |
 | `0x00000040` | Role handover |
+| `0x00000080` | Host-initiated REMOTE-to-LOCAL copy request |
 
 Unknown capability bits are ignored. Advertise only features that the peer
 can actually perform. The current Mac peer's HELLO_ACK advertises `0x41`;
@@ -219,6 +220,8 @@ tested.
 | `0x21` | TRANSFER_READY | Receiver accepts or rejects preparation |
 | `0x22` | TRANSFER_COMPLETE | Receiver reports final transfer result |
 | `0x23` | TRANSFER_CANCEL | Type is defined; no common payload contract is implemented |
+| `0x24` | COPY_REQUEST | Active host asks a peer to prepare a remote-to-host copy |
+| `0x25` | COPY_REQUEST_RESULT | Peer accepts or rejects a COPY_REQUEST |
 | `0x7F` | ERROR | Report a protocol/request error |
 
 Current code does not require heartbeat messages or define a common payload
@@ -405,6 +408,46 @@ The current transfer flow handles a file's byte stream; the directory
 protocol's resource-fork size field does not mean resource-fork contents are
 also transferred. Do not claim complete Classic Mac metadata/fork preservation
 without an implemented, tested data format for it.
+
+The active target may initiate `COPY_PREPARE` for either transfer direction.
+The active PC may also request a download with `COPY_REQUEST`; the target then
+initiates `COPY_PREPARE` using the request's ID. A target-to-PC copy is staged
+in a unique temporary file under the selected LOCAL root, checked against the
+declared length and CRC-32, and committed only after verification. PC-to-target
+copies identify a regular source file under the same root; the PC sends it
+using the shared XMODEM-CRC sender. All paths reject stale roles, unsupported
+providers or formats, and LOCAL paths that cross reparse points.
+
+### COPY_REQUEST (`0x24`) and COPY_REQUEST_RESULT (`0x25`)
+
+`COPY_REQUEST` asks the target to send one file from a REMOTE provider to the
+selected LOCAL folder. The host must own the active role. Its payload is:
+
+```text
+roleEpoch:u32
+activeEndpointId[16]
+sourceEndpointId[16]
+sourcePath:PathRef
+destinationEndpointId[16]
+destinationPath:PathRef
+destinationNameLength:u8
+destinationName:UTF-8
+overwrite:u8
+```
+
+The target verifies the role epoch, active endpoint, source and destination
+endpoint IDs, provider IDs, safe paths, and destination name before accepting.
+Advertise capability `0x00000080` only when `COPY_REQUEST` is implemented.
+The RT1170 target and Windows app support this extension; older Mac/DOS peers
+do not currently implement it and must ignore the unknown message type.
+`COPY_REQUEST_RESULT` contains exactly `resultCode:u16` and uses the same
+request ID. Result 0 means the request was accepted; the target then sends
+`COPY_PREPARE` with that same ID after it has read and checksummed the source.
+Nonzero results reject the request: 1=busy, 2=invalid request/source, 3=stale
+or unauthorized role, and 4=source read or preparation failure. The host
+continues waiting after result 0 and times out if no matching `COPY_PREPARE`
+arrives. The host receiver still validates the returned endpoints, paths, name,
+length, CRC-32, and overwrite policy before accepting the transfer.
 
 ### TRANSFER_READY (`0x21`)
 

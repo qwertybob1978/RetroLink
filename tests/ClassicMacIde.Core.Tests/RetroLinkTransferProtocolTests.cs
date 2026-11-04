@@ -69,6 +69,63 @@ public class RetroLinkTransferProtocolTests
     }
 
     [Fact]
+    public void CopyRequestRoundTripsDestinationAndOverwritePolicy()
+    {
+        var request = new RetroLinkCopyRequest(
+                4,
+                Enumerable.Range(0, 16).Select(value => (byte)value).ToArray(),
+                Enumerable.Range(16, 16).Select(value => (byte)value).ToArray(),
+                new RetroLinkPath(1, ["folder", "sample.bin"]),
+                Enumerable.Range(32, 16).Select(value => (byte)value).ToArray(),
+                new RetroLinkPath(0x80000001, ["incoming"]),
+                "sample.bin",
+                true);
+
+        var decoded = RetroLinkTransferProtocol.DecodeCopyRequest(
+                RetroLinkTransferProtocol.EncodeCopyRequest(request));
+
+        Assert.Equal(request.RoleEpoch, decoded.RoleEpoch);
+        Assert.Equal(request.ActiveEndpointId.ToArray(), decoded.ActiveEndpointId.ToArray());
+        Assert.Equal(request.SourceEndpointId.ToArray(), decoded.SourceEndpointId.ToArray());
+        Assert.Equal(request.SourcePath.ProviderId, decoded.SourcePath.ProviderId);
+        Assert.Equal(request.SourcePath.Components, decoded.SourcePath.Components);
+        Assert.Equal(
+                request.DestinationEndpointId.ToArray(),
+                decoded.DestinationEndpointId.ToArray());
+        Assert.Equal(
+                request.DestinationPath.ProviderId,
+                decoded.DestinationPath.ProviderId);
+        Assert.Equal(
+                request.DestinationPath.Components,
+                decoded.DestinationPath.Components);
+        Assert.Equal(request.DestinationName, decoded.DestinationName);
+        Assert.Equal(request.Overwrite, decoded.Overwrite);
+    }
+
+    [Fact]
+    public void CopyRequestRejectsUnsafeDestinationAndMalformedResult()
+    {
+        var request = new RetroLinkCopyRequest(
+                1,
+                new byte[16],
+                Enumerable.Repeat((byte)1, 16).ToArray(),
+                new RetroLinkPath(1, ["sample.bin"]),
+                Enumerable.Repeat((byte)2, 16).ToArray(),
+                new RetroLinkPath(0x80000001, []),
+                "folder\\sample.bin",
+                false);
+
+        Assert.Throws<ArgumentException>(
+                () => RetroLinkTransferProtocol.EncodeCopyRequest(request));
+        Assert.Equal(
+                4,
+                RetroLinkTransferProtocol.DecodeCopyRequestResult(
+                    RetroLinkTransferProtocol.EncodeCopyRequestResult(4)));
+        Assert.Throws<InvalidDataException>(
+                () => RetroLinkTransferProtocol.DecodeCopyRequestResult([0]));
+    }
+
+    [Fact]
     public void CopyPrepareRejectsUnsafeFieldsAndMalformedNames()
     {
         var request = CreateRequest() with { DestinationName = ".." };

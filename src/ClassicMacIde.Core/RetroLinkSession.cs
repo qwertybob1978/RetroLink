@@ -16,6 +16,7 @@ public enum RetroLinkCapabilities : uint
     XModemCrc = 0x00000010,
     MacBinaryIi = 0x00000020,
     RoleHandover = 0x00000040,
+    HostInitiatedCopy = 0x00000080,
 }
 
 public enum RetroLinkConnectionState
@@ -131,7 +132,8 @@ public sealed class RetroLinkSession
             RetroLinkCapabilities.Delete |
             RetroLinkCapabilities.XModemCrc |
             RetroLinkCapabilities.MacBinaryIi |
-            RetroLinkCapabilities.RoleHandover,
+            RetroLinkCapabilities.RoleHandover |
+            RetroLinkCapabilities.HostInitiatedCopy,
         CancellationToken cancellationToken = default)
     {
         await _connectGate.WaitAsync(cancellationToken);

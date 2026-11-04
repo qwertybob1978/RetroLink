@@ -257,6 +257,8 @@ change session or role state. Except for HELLO, stale session IDs are ignored.
 | `0x21` | `TRANSFER_READY` | Receiver → sender | Accept/reject and prepare a temporary file |
 | `0x22` | `TRANSFER_COMPLETE` | Receiver → active | Report exact length, CRC, and commit status |
 | `0x23` | `TRANSFER_CANCEL` | Either | Cancel a transfer at a safe boundary |
+| `0x24` | `COPY_REQUEST` | Active host → target | Request a file from REMOTE to LOCAL |
+| `0x25` | `COPY_REQUEST_RESULT` | Target → active host | Accept or reject a copy request |
 | `0x7F` | `ERROR` | Either | Bounded error code, rejected request, and reason |
 
 ### Session and role payloads
@@ -281,10 +283,12 @@ change session or role state. Except for HELLO, stale session IDs are ignored.
   Mac-assigned provider IDs use the remaining session IDs and must not collide.
 - Capability bits are `0x00000001=LIST`, `0x00000002=MKDIR`,
   `0x00000004=RENAME`, `0x00000008=DELETE`, `0x00000010=XMODEM-CRC`,
-  `0x00000020=MacBinary-II`, and `0x00000040=role handover`. Unknown
-  capabilities are ignored. Supported-baud flag bits, low to high, represent
-  300, 600, 1200, 1800, 2400, 3600, 4800, 7200, 9600, 14400, 19200, 28800,
-  38400, and 57600 baud.
+  `0x00000020=MacBinary-II`, `0x00000040=role handover`, and
+  `0x00000080=host-initiated REMOTE-to-LOCAL copy`. Unknown capabilities are
+  ignored. The RT1170 target and Windows app implement the new copy-request
+  extension; existing Mac/DOS peers do not. Supported-baud flag bits, low to
+  high, represent 300, 600, 1200, 1800, 2400, 3600, 4800, 7200, 9600, 14400,
+  19200, 28800, 38400, and 57600 baud.
 - `ROLE_REQUEST` contains endpoint ID (16 bytes), expected role epoch (u32),
   and reason (u8: key, command, or explicit takeover). The Mac sends a request
   to the Windows coordinator; Windows UI input is applied locally by that
@@ -351,6 +355,15 @@ change session or role state. Except for HELLO, stale session IDs are ignored.
 
 ### Copy and error payloads
 
+- `COPY_REQUEST` contains role epoch (u32), active endpoint ID (16 bytes),
+  source endpoint ID and `PathRef`, destination endpoint ID and parent
+  `PathRef`, destination name (u8 length + UTF-8), and overwrite flag (u8).
+  It requests a target-to-host transfer while the host owns control.
+- `COPY_REQUEST_RESULT` is exactly one result code (u16), returned with the
+  request ID. Result 0 means accepted; the target follows with `COPY_PREPARE`
+  using that same request ID after reading and checksumming the source. Errors
+  are 1=busy, 2=invalid request/source, 3=stale or unauthorized role, and
+  4=source read or preparation failure.
 - `COPY_PREPARE` begins with role epoch (u32) and active endpoint ID (16
   bytes), then source endpoint ID (16 bytes), source `PathRef`, destination
   endpoint ID (16 bytes), destination-parent `PathRef`, destination name

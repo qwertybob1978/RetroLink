@@ -3,6 +3,13 @@
 RetroLink is a serial file-transfer application with Windows, classic
 Macintosh, and MS-DOS peers. 
 
+## Terminology
+
+In user-facing labels and documentation, **LOCAL** is the machine running the
+interface and **REMOTE** is its connected peer. The Windows app therefore
+shows its selected folder as LOCAL and the connected device as REMOTE; target
+firmware uses the same terms from its own point of view.
+
 ## Windows
 
 Requires Windows 10/11 x64 and the .NET 10 SDK.

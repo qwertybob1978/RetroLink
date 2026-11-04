@@ -34,7 +34,9 @@ public partial class MainWindow : Window
     private uint _remoteRequestRoleEpoch;
     private CancellationTokenSource? _pendingActionTimeout;
     private PendingOutboundTransfer? _outboundTransfer;
+    private PendingRemoteDownload? _pendingRemoteDownload;
     private PendingFileOperation? _pendingFileOperation;
+    private bool _incomingTransferActive;
     private bool _isConnecting;
     private bool _remotePaneActive;
 
@@ -43,6 +45,10 @@ public partial class MainWindow : Window
         FileStream Stream,
         ulong Length,
         uint Crc32);
+
+    private sealed record PendingRemoteDownload(
+        uint RequestId,
+        RetroLinkCopyRequest Request);
 
     private sealed record PendingFileOperation(
         uint RequestId,
@@ -228,6 +234,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_incomingTransferActive ||
+            _outboundTransfer is not null ||
+            _pendingRemoteDownload is not null ||
+            _pendingFileOperation is not null)
+        {
+            SetStatus("Wait for the current file operation before transferring a file.");
+            return;
+        }
+
         if (_localRootPath is null ||
             _localRootPath.Length == 0 ||
             _localCurrentPath is null)
@@ -309,7 +324,7 @@ public partial class MainWindow : Window
             stream = null;
             TransferProgressBar.Value = 0;
             TransferProgressBar.Visibility = Visibility.Visible;
-            CopyToMacButton.IsEnabled = false;
+            UpdateCopyButtonState();
             await session.SendAsync(
                 (byte)RetroLinkMessageType.CopyPrepare,
                 requestId,
@@ -331,6 +346,116 @@ public partial class MainWindow : Window
         {
             stream?.Dispose();
             FailOutboundTransfer($"Could not prepare the file transfer: {error.Message}");
+        }
+    }
+
+    private async void CopyFromMac_Click(object sender, RoutedEventArgs e)
+    {
+        var session = _session;
+        if (session is null ||
+            !_activeEndpointId.Span.SequenceEqual(_endpointId))
+        {
+            SetStatus("LOCAL must own control before requesting a REMOTE download.");
+            return;
+        }
+
+        if (_incomingTransferActive ||
+            _outboundTransfer is not null ||
+            _pendingRemoteDownload is not null ||
+            _pendingFileOperation is not null)
+        {
+            SetStatus("Wait for the current file operation before requesting a download.");
+            return;
+        }
+
+        if (_localRootPath is null || _localCurrentPath is null ||
+            !Directory.Exists(_localCurrentPath) ||
+            !IsWithinRoot(_localCurrentPath, _localRootPath))
+        {
+            SetStatus("Choose a valid LOCAL destination folder first.");
+            return;
+        }
+
+        if (RemoteFileListView.SelectedItem is not RetroLinkFileEntry
+            {
+                IsDirectory: false,
+                ProviderId: uint sourceProviderId,
+                PathComponents: not null,
+            } entry ||
+            _remoteCurrentPath is null)
+        {
+            SetStatus("Select a regular REMOTE file to download.");
+            return;
+        }
+
+        if (session.PeerInfo is not { } peer)
+        {
+            SetStatus("REMOTE peer information is not available.");
+            return;
+        }
+
+        if ((peer.Capabilities & RetroLinkCapabilities.HostInitiatedCopy) ==
+            RetroLinkCapabilities.None)
+        {
+            SetStatus("This REMOTE peer does not support host-initiated downloads.");
+            return;
+        }
+
+        if (!peer.Roots.Any(root => root.ProviderId == sourceProviderId))
+        {
+            SetStatus("The selected REMOTE volume is not available in this session.");
+            return;
+        }
+
+        try
+        {
+            var relativePath = Path.GetRelativePath(_localRootPath, _localCurrentPath);
+            var components = relativePath == "."
+                ? Array.Empty<string>()
+                : relativePath.Split(
+                    [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                    StringSplitOptions.RemoveEmptyEntries);
+            var request = new RetroLinkCopyRequest(
+                _roleEpoch,
+                _endpointId,
+                peer.EndpointId,
+                new RetroLinkPath(sourceProviderId, entry.PathComponents),
+                _endpointId,
+                new RetroLinkPath(LocalShareProviderId, components),
+                entry.Name,
+                Overwrite: false);
+            var payload = RetroLinkTransferProtocol.EncodeCopyRequest(request);
+            var requestId = session.NextRequestId();
+            _pendingRemoteDownload = new PendingRemoteDownload(requestId, request);
+            UpdateCopyButtonState();
+            await session.SendAsync(
+                (byte)RetroLinkMessageType.CopyRequest,
+                requestId,
+                payload);
+            SetStatus($"Requesting '{entry.Name}' from REMOTE...");
+            if (_pendingRemoteDownload?.RequestId == requestId)
+            {
+                StartPendingActionTimeout(
+                    requestId,
+                    () =>
+                    {
+                        _pendingRemoteDownload = null;
+                        UpdateCopyButtonState();
+                        SetStatus("Timeout: REMOTE did not prepare the requested download.");
+                    });
+            }
+        }
+        catch (Exception error) when (
+            error is IOException or
+                UnauthorizedAccessException or
+                ArgumentException or
+                InvalidDataException or
+                InvalidOperationException or
+                ObjectDisposedException)
+        {
+            _pendingRemoteDownload = null;
+            UpdateCopyButtonState();
+            SetStatus($"Could not request the REMOTE file: {error.Message}");
         }
     }
 
@@ -812,6 +937,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_pendingRemoteDownload is not null)
+        {
+            SetStatus("Wait for the pending REMOTE download request before changing control.");
+            return;
+        }
+
         if (_pendingFileOperation is not null)
         {
             SetStatus("Wait for the pending file operation before changing control.");
@@ -1005,6 +1136,12 @@ public partial class MainWindow : Window
                 await HandleFileOperationRequestAsync(
                     frame,
                     (RetroLinkMessageType)frame.MessageType);
+                break;
+            case RetroLinkMessageType.CopyPrepare:
+                await HandleCopyPrepareAsync(frame);
+                break;
+            case RetroLinkMessageType.CopyRequestResult:
+                HandleCopyRequestResult(frame);
                 break;
             case RetroLinkMessageType.OperationResult:
                 await HandleOperationResultAsync(frame);
@@ -1484,6 +1621,638 @@ public partial class MainWindow : Window
             RetroLinkDirectoryProtocol.EncodeListPage(page));
     }
 
+    private async Task HandleCopyPrepareAsync(RetroLinkFrame frame)
+    {
+        RetroLinkCopyPrepare request;
+        try
+        {
+            request = RetroLinkTransferProtocol.DecodeCopyPrepare(frame.Payload.Span);
+        }
+        catch (InvalidDataException error)
+        {
+            if (_pendingRemoteDownload?.RequestId == frame.RequestId)
+            {
+                _pendingRemoteDownload = null;
+                ClearPendingActionTimeout();
+                UpdateCopyButtonState();
+            }
+            await SendTransferReadyAsync(frame.RequestId, 2, 0, 0);
+            SetStatus($"Ignored an invalid COPY_PREPARE request: {error.Message}");
+            return;
+        }
+
+        var pendingDownload = _pendingRemoteDownload;
+        var hostInitiatedDownload =
+            pendingDownload?.RequestId == frame.RequestId;
+        if (pendingDownload is not null &&
+            (!hostInitiatedDownload ||
+                !CopyPrepareMatchesRemoteDownload(request, pendingDownload.Request)))
+        {
+            if (hostInitiatedDownload)
+            {
+                _pendingRemoteDownload = null;
+                ClearPendingActionTimeout();
+                UpdateCopyButtonState();
+            }
+
+            await SendTransferReadyAsync(frame.RequestId, request, 2);
+            SetStatus("Rejected COPY_PREPARE because it did not match the requested REMOTE file.");
+            return;
+        }
+        if (hostInitiatedDownload)
+        {
+            _pendingRemoteDownload = null;
+            ClearPendingActionTimeout();
+            UpdateCopyButtonState();
+        }
+
+        var session = _session;
+        var peer = session?.PeerInfo;
+        if (session is null || peer is null)
+        {
+            return;
+        }
+
+        var resultCode = ValidateIncomingCopyPrepare(
+            request,
+            peer,
+            hostInitiatedDownload,
+            out var receivingLocally,
+            out var validationMessage);
+        if (resultCode != 0)
+        {
+            await SendTransferReadyAsync(frame.RequestId, request, resultCode);
+            SetStatus($"Rejected COPY_PREPARE: {validationMessage}");
+            return;
+        }
+
+        if (_incomingTransferActive ||
+            _outboundTransfer is not null ||
+            _pendingFileOperation is not null)
+        {
+            await SendTransferReadyAsync(frame.RequestId, request, 3);
+            SetStatus("Rejected COPY_PREPARE while another file operation is active.");
+            return;
+        }
+
+        _incomingTransferActive = true;
+        UpdateCopyButtonState();
+        try
+        {
+            if (receivingLocally)
+            {
+                await ReceiveCopyIntoLocalAsync(session, frame.RequestId, request);
+            }
+            else
+            {
+                await SendLocalCopyToPeerAsync(session, frame.RequestId, request);
+            }
+        }
+        finally
+        {
+            _incomingTransferActive = false;
+        }
+    }
+
+    private static bool CopyPrepareMatchesRemoteDownload(
+        RetroLinkCopyPrepare prepare,
+        RetroLinkCopyRequest request) =>
+        prepare.RoleEpoch == request.RoleEpoch &&
+        prepare.ActiveEndpointId.Span.SequenceEqual(request.ActiveEndpointId.Span) &&
+        prepare.SourceEndpointId.Span.SequenceEqual(request.SourceEndpointId.Span) &&
+        PathsEqual(prepare.SourcePath, request.SourcePath) &&
+        prepare.DestinationEndpointId.Span.SequenceEqual(
+            request.DestinationEndpointId.Span) &&
+        PathsEqual(prepare.DestinationPath, request.DestinationPath) &&
+        string.Equals(
+            prepare.DestinationName,
+            request.DestinationName,
+            StringComparison.Ordinal) &&
+        prepare.Overwrite == request.Overwrite;
+
+    private static bool PathsEqual(RetroLinkPath left, RetroLinkPath right) =>
+        left.ProviderId == right.ProviderId &&
+        left.Components.SequenceEqual(right.Components, StringComparer.Ordinal);
+
+    private ushort ValidateIncomingCopyPrepare(
+        RetroLinkCopyPrepare request,
+        RetroLinkPeerInfo peer,
+        bool hostInitiatedDownload,
+        out bool receivingLocally,
+        out string reason)
+    {
+        receivingLocally = false;
+        reason = "The request does not match the current active role or session.";
+        ReadOnlyMemory<byte> activeEndpointId = hostInitiatedDownload
+            ? _endpointId
+            : peer.EndpointId;
+        if (request.RoleEpoch != _roleEpoch ||
+            !_activeEndpointId.Span.SequenceEqual(activeEndpointId.Span) ||
+            !request.ActiveEndpointId.Span.SequenceEqual(activeEndpointId.Span))
+        {
+            return 3;
+        }
+
+        if (request.TransferFormat != RetroLinkTransferProtocol.RawDataFormat ||
+            request.TransferMode != RetroLinkTransferProtocol.XModemCrc128Mode ||
+            request.StreamLength > RetroLinkTransferProtocol.MaximumTransferSize)
+        {
+            reason = "Only raw XMODEM-CRC transfers within the supported size are accepted.";
+            return 7;
+        }
+
+        var sourceIsPeer = request.SourceEndpointId.Span.SequenceEqual(peer.EndpointId.Span);
+        var destinationIsLocal =
+            request.DestinationEndpointId.Span.SequenceEqual(_endpointId);
+        var sourceIsLocal = request.SourceEndpointId.Span.SequenceEqual(_endpointId);
+        var destinationIsPeer =
+            request.DestinationEndpointId.Span.SequenceEqual(peer.EndpointId.Span);
+
+        if (sourceIsPeer && destinationIsLocal)
+        {
+            receivingLocally = true;
+            if (request.DestinationPath.ProviderId != LocalShareProviderId ||
+                request.DestinationPath.Components.Any(
+                    component => component.Contains('/') || component.Contains('\\')) ||
+                !peer.Roots.Any(root => root.ProviderId == request.SourcePath.ProviderId))
+            {
+                reason = "The source or destination provider is not available in this session.";
+                return 2;
+            }
+
+            if (_localRootPath is null || !Directory.Exists(_localRootPath))
+            {
+                reason = "Choose an existing LOCAL root before receiving files.";
+                return 3;
+            }
+
+            if (request.DestinationName.Contains('/') ||
+                request.DestinationName.Contains('\\') ||
+                request.DestinationName is "." or "..")
+            {
+                reason = "The destination name must be a single safe path component.";
+                return 2;
+            }
+
+            reason = string.Empty;
+            return 0;
+        }
+
+        if (sourceIsLocal && destinationIsPeer)
+        {
+            if (request.SourcePath.ProviderId != LocalShareProviderId ||
+                request.SourcePath.Components.Count == 0 ||
+                request.SourcePath.Components.Any(
+                    component => component.Contains('/') || component.Contains('\\')))
+            {
+                reason = "The source path does not identify a LOCAL file.";
+                return 2;
+            }
+
+            var destinationRoot = peer.Roots.FirstOrDefault(
+                root => root.ProviderId == request.DestinationPath.ProviderId);
+            if (destinationRoot is null)
+            {
+                reason = "The target destination provider is not available.";
+                return 2;
+            }
+
+            if (destinationRoot.IsReadOnly)
+            {
+                reason = "The target destination provider is read-only.";
+                return 3;
+            }
+
+            if (_localRootPath is null || !Directory.Exists(_localRootPath))
+            {
+                reason = "Choose an existing LOCAL root before sending files.";
+                return 3;
+            }
+
+            reason = string.Empty;
+            return 0;
+        }
+
+        reason = "The source and destination endpoints are not this PC and its target peer.";
+        return 2;
+    }
+
+    private void HandleCopyRequestResult(RetroLinkFrame frame)
+    {
+        var pending = _pendingRemoteDownload;
+        if (pending is null || pending.RequestId != frame.RequestId)
+        {
+            return;
+        }
+
+        ushort resultCode;
+        try
+        {
+            resultCode = RetroLinkTransferProtocol.DecodeCopyRequestResult(
+                frame.Payload.Span);
+        }
+        catch (InvalidDataException error)
+        {
+            _pendingRemoteDownload = null;
+            ClearPendingActionTimeout();
+            UpdateCopyButtonState();
+            SetStatus($"REMOTE returned an invalid copy-request result: {error.Message}");
+            return;
+        }
+
+        if (resultCode == 0)
+        {
+            SetStatus("REMOTE accepted the download request; waiting for transfer preparation.");
+            return;
+        }
+
+        _pendingRemoteDownload = null;
+        ClearPendingActionTimeout();
+        UpdateCopyButtonState();
+        SetStatus(resultCode switch
+        {
+            1 => "REMOTE is busy with another transfer.",
+            2 => "REMOTE rejected the download request as invalid.",
+            3 => "REMOTE rejected the request because LOCAL no longer owns control.",
+            4 => "REMOTE could not read or prepare the selected file.",
+            _ => $"REMOTE rejected the download request (error {resultCode}).",
+        });
+    }
+
+    private async Task ReceiveCopyIntoLocalAsync(
+        RetroLinkSession session,
+        uint requestId,
+        RetroLinkCopyPrepare request)
+    {
+        var rootPath = _localRootPath!;
+        FileStream? temporaryStream = null;
+        string? temporaryPath = null;
+        string? destinationPath = null;
+        var readySent = false;
+        XModemCrcReceiveResult? receiveResult = null;
+        try
+        {
+            var parentPath = ResolveShareDirectory(rootPath, request.DestinationPath);
+            destinationPath = Path.GetFullPath(
+                Path.Combine(parentPath, request.DestinationName));
+            if (!IsWithinRoot(destinationPath, rootPath))
+            {
+                throw new UnauthorizedAccessException(
+                    "The destination escaped the selected LOCAL root.");
+            }
+
+            if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
+            {
+                var existingAttributes = File.GetAttributes(destinationPath);
+                if ((existingAttributes & FileAttributes.ReparsePoint) != 0 ||
+                    (existingAttributes & FileAttributes.Directory) != 0)
+                {
+                    throw new UnauthorizedAccessException(
+                        "The destination is a directory or reparse point.");
+                }
+
+                if (!request.Overwrite)
+                {
+                    await SendTransferReadyAsync(requestId, request, 4);
+                    SetStatus($"Rejected COPY_PREPARE: '{request.DestinationName}' already exists.");
+                    return;
+                }
+            }
+
+            temporaryPath = Path.Combine(
+                parentPath,
+                $".retrolink-{Guid.NewGuid():N}.tmp");
+            temporaryStream = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                bufferSize: 8192,
+                FileOptions.Asynchronous | FileOptions.WriteThrough);
+
+            await SendTransferReadyAsync(requestId, request, 0);
+            readySent = true;
+            TransferProgressBar.Value = 0;
+            TransferProgressBar.Visibility = Visibility.Visible;
+            SetStatus(
+                $"Receiving {request.DestinationName} from REMOTE ({request.StreamLength:N0} bytes) using XMODEM-CRC...");
+
+            receiveResult = request.StreamLength == 0
+                ? new XModemCrcReceiveResult(
+                    0,
+                    Crc32IsoHdlc.Compute(ReadOnlySpan<byte>.Empty))
+                : await new XModemCrcReceiver(
+                        maximumAttempts: 10,
+                        responseTimeout: PendingActionTimeout)
+                    .ReceiveAsync(
+                        _serialPort?.BaseStream ??
+                            throw new IOException("The serial port closed before transfer started."),
+                        temporaryStream,
+                        checked((long)request.StreamLength),
+                        _receiveCancellation?.Token ?? CancellationToken.None,
+                        new Progress<long>(bytesReceived =>
+                        {
+                            TransferProgressBar.Value = request.StreamLength == 0
+                                ? 90
+                                : (double)bytesReceived / request.StreamLength * 90;
+                            SetStatus(
+                                $"Receiving {bytesReceived:N0} of {request.StreamLength:N0} bytes from REMOTE using XMODEM-CRC...");
+                        }));
+
+            await temporaryStream.FlushAsync(_receiveCancellation?.Token ?? CancellationToken.None);
+            var completedStream = temporaryStream;
+            await Task.Run(
+                () => completedStream.Flush(flushToDisk: true),
+                _receiveCancellation?.Token ?? CancellationToken.None);
+            if (receiveResult.Length != checked((long)request.StreamLength) ||
+                receiveResult.Crc32 != request.StreamCrc32)
+            {
+                await temporaryStream.DisposeAsync();
+                temporaryStream = null;
+                TryDeleteFile(temporaryPath);
+                temporaryPath = null;
+                await SendTransferCompleteAsync(
+                    session,
+                    requestId,
+                    new RetroLinkTransferComplete(
+                        8,
+                        checked((ulong)receiveResult.Length),
+                        receiveResult.Crc32));
+                SetStatus("REMOTE transfer failed length or CRC-32 verification.");
+                return;
+            }
+
+            await temporaryStream.DisposeAsync();
+            temporaryStream = null;
+            _ = ResolveShareDirectory(rootPath, request.DestinationPath);
+            if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
+            {
+                var existingAttributes = File.GetAttributes(destinationPath);
+                if ((existingAttributes & FileAttributes.ReparsePoint) != 0 ||
+                    (existingAttributes & FileAttributes.Directory) != 0 ||
+                    !request.Overwrite)
+                {
+                    throw new IOException(
+                        "The destination changed while the transfer was in progress.");
+                }
+            }
+
+            File.Move(temporaryPath, destinationPath, request.Overwrite);
+            temporaryPath = null;
+            await SendTransferCompleteAsync(
+                session,
+                requestId,
+                new RetroLinkTransferComplete(
+                    0,
+                    checked((ulong)receiveResult.Length),
+                    receiveResult.Crc32));
+            if (string.Equals(_localRootPath, rootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                await RefreshLocalFilesAsync();
+            }
+
+            TransferProgressBar.Value = 100;
+            SetStatus(
+                $"Transfer complete: {receiveResult.Length:N0} bytes verified and installed as '{request.DestinationName}'.");
+        }
+        catch (OperationCanceledException) when (
+            _receiveCancellation?.IsCancellationRequested == true)
+        {
+            throw;
+        }
+        catch (Exception error) when (
+            error is IOException or
+                UnauthorizedAccessException or
+                ArgumentException or
+                InvalidOperationException or
+                OverflowException or
+                TimeoutException or
+                ObjectDisposedException or
+                XModemTransferException)
+        {
+            temporaryStream?.Dispose();
+            temporaryStream = null;
+            TryDeleteFile(temporaryPath);
+            temporaryPath = null;
+            if (readySent && _session == session)
+            {
+                await SendTransferCompleteAsync(
+                    session,
+                    requestId,
+                    new RetroLinkTransferComplete(
+                        8,
+                        checked((ulong)(receiveResult?.Length ?? 0)),
+                        receiveResult?.Crc32 ?? 0));
+            }
+            else if (!readySent && _session == session)
+            {
+                await SendTransferReadyAsync(
+                    requestId,
+                    request,
+                    MapTransferPreparationError(error));
+            }
+
+            SetStatus($"REMOTE transfer failed: {error.Message}");
+        }
+        finally
+        {
+            temporaryStream?.Dispose();
+            TryDeleteFile(temporaryPath);
+            TransferProgressBar.Visibility = Visibility.Collapsed;
+            UpdateCopyButtonState();
+        }
+    }
+
+    private async Task SendLocalCopyToPeerAsync(
+        RetroLinkSession session,
+        uint requestId,
+        RetroLinkCopyPrepare request)
+    {
+        FileStream? sourceStream = null;
+        try
+        {
+            var (sourcePath, attributes) = ResolveShareObject(
+                _localRootPath!,
+                request.SourcePath);
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                throw new InvalidDataException("The selected LOCAL source is not a file.");
+            }
+
+            sourceStream = new FileStream(
+                sourcePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 8192,
+                useAsync: true);
+            var sourceLength = checked((ulong)sourceStream.Length);
+            var metadataDeferred =
+                request.StreamLength == 0 && request.StreamCrc32 == 0;
+            if (!metadataDeferred && sourceLength != request.StreamLength)
+            {
+                throw new InvalidDataException(
+                    "The selected LOCAL source length does not match COPY_PREPARE.");
+            }
+
+            var actualCrc32 = await Task.Run(() => Crc32IsoHdlc.Compute(sourceStream));
+            if (!metadataDeferred && actualCrc32 != request.StreamCrc32)
+            {
+                throw new InvalidDataException(
+                    "The selected LOCAL source CRC-32 does not match COPY_PREPARE.");
+            }
+
+            sourceStream.Position = 0;
+            _outboundTransfer = new PendingOutboundTransfer(
+                requestId,
+                sourceStream,
+                sourceLength,
+                actualCrc32);
+            sourceStream = null;
+            var transferRequest = request with
+            {
+                StreamLength = sourceLength,
+                StreamCrc32 = actualCrc32,
+            };
+            TransferProgressBar.Value = 0;
+            TransferProgressBar.Visibility = Visibility.Visible;
+            await SendTransferReadyAsync(requestId, transferRequest, 0);
+            SetStatus(
+                $"Preparing {sourceLength:N0} LOCAL bytes for transfer to REMOTE.");
+            try
+            {
+                if (sourceLength != 0)
+                {
+                    await new XModemCrcSender(
+                            maximumAttempts: 10,
+                            responseTimeout: PendingActionTimeout)
+                        .SendAsync(
+                            _outboundTransfer.Stream,
+                            _serialPort?.BaseStream ??
+                                throw new IOException("The serial port closed before transfer started."),
+                            checked((long)sourceLength),
+                            _receiveCancellation?.Token ?? CancellationToken.None,
+                            new Progress<long>(bytesSent =>
+                            {
+                                TransferProgressBar.Value =
+                                    (double)bytesSent / sourceLength * 90;
+                                SetStatus(
+                                    $"Sending {bytesSent:N0} of {sourceLength:N0} LOCAL bytes to REMOTE using XMODEM-CRC...");
+                            }));
+                }
+            }
+            catch (Exception error) when (
+                error is IOException or
+                    TimeoutException or
+                    InvalidDataException or
+                    ObjectDisposedException or
+                    XModemTransferException or
+                    OperationCanceledException)
+            {
+                FailOutboundTransfer(
+                    $"The target-originated XMODEM transfer failed: {error.Message}");
+                return;
+            }
+
+            TransferProgressBar.Value = 90;
+            SetStatus("LOCAL file data sent; waiting for REMOTE verification.");
+            StartPendingActionTimeout(
+                requestId,
+                () => FailOutboundTransfer(
+                    "Timeout: REMOTE did not confirm the completed transfer within 10 seconds."));
+        }
+        catch (Exception error) when (
+            error is IOException or
+                UnauthorizedAccessException or
+                ArgumentException or
+                InvalidDataException or
+                InvalidOperationException or
+                OverflowException or
+                ObjectDisposedException)
+        {
+            sourceStream?.Dispose();
+            if (_outboundTransfer?.RequestId == requestId)
+            {
+                FailOutboundTransfer($"Could not prepare the LOCAL source: {error.Message}");
+            }
+            else
+            {
+                await SendTransferReadyAsync(
+                    requestId,
+                    request,
+                    MapTransferPreparationError(error));
+                SetStatus($"Rejected target-originated COPY_PREPARE: {error.Message}");
+            }
+        }
+    }
+
+    private Task SendTransferReadyAsync(
+        uint requestId,
+        RetroLinkCopyPrepare request,
+        ushort resultCode) =>
+        SendTransferReadyAsync(
+            requestId,
+            resultCode,
+            request.StreamLength,
+            request.StreamCrc32);
+
+    private Task SendTransferReadyAsync(
+        uint requestId,
+        ushort resultCode,
+        ulong streamLength,
+        uint streamCrc32)
+    {
+        var session = _session;
+        return session is null
+            ? Task.CompletedTask
+            : session.SendAsync(
+                (byte)RetroLinkMessageType.TransferReady,
+                requestId,
+                RetroLinkTransferProtocol.EncodeTransferReady(
+                    new RetroLinkTransferReady(
+                        resultCode,
+                        streamLength,
+                        streamCrc32,
+                        RetroLinkTransferProtocol.XModemCrc128Mode,
+                        RetroLinkTransferProtocol.XModemCrcBlockSize)));
+    }
+
+    private static Task SendTransferCompleteAsync(
+        RetroLinkSession session,
+        uint requestId,
+        RetroLinkTransferComplete complete) =>
+        session.SendAsync(
+            (byte)RetroLinkMessageType.TransferComplete,
+            requestId,
+            RetroLinkTransferProtocol.EncodeTransferComplete(complete));
+
+    private static ushort MapTransferPreparationError(Exception error) => error switch
+    {
+        FileNotFoundException or DirectoryNotFoundException => 1,
+        UnauthorizedAccessException => 3,
+        InvalidDataException or ArgumentException => 2,
+        _ => 8,
+    };
+
+    private static void TryDeleteFile(string? path)
+    {
+        if (path is null)
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
     private async Task HandleTransferReadyAsync(RetroLinkFrame frame)
     {
         var transfer = _outboundTransfer;
@@ -1641,6 +2410,7 @@ public partial class MainWindow : Window
             _pendingActionTimeout = null;
             if (_outboundTransfer?.RequestId == requestId ||
                 _remotePendingRequestId == requestId ||
+                _pendingRemoteDownload?.RequestId == requestId ||
                 _pendingFileOperation?.RequestId == requestId)
             {
                 onTimeout();
@@ -2053,7 +2823,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_outboundTransfer is not null || _pendingFileOperation is not null)
+        if (_outboundTransfer is not null ||
+            _incomingTransferActive ||
+            _pendingRemoteDownload is not null ||
+            _pendingFileOperation is not null)
         {
             await SendRoleStateAsync();
             SetStatus("Control cannot change while a file operation is active.");
@@ -2155,7 +2928,9 @@ public partial class MainWindow : Window
         _remoteCurrentPath = null;
         _remoteRequestedPath = null;
         _remotePendingRequestId = null;
+        _pendingRemoteDownload = null;
         _pendingFileOperation = null;
+        _incomingTransferActive = false;
         RemoteUpButton.IsEnabled = false;
         TransferProgressBar.Visibility = Visibility.Collapsed;
         RemoteDeviceText.Text = "Not connected to a REMOTE RetroLink peer";
@@ -2181,11 +2956,16 @@ public partial class MainWindow : Window
 
     private void UpdateCopyButtonState()
     {
-        CopyToMacButton.IsEnabled =
+        var peer = _session?.PeerInfo;
+        var canTransfer =
             _session is not null &&
             _activeEndpointId.Span.SequenceEqual(_endpointId) &&
             _pendingFileOperation is null &&
             _outboundTransfer is null &&
+            !_incomingTransferActive &&
+            _pendingRemoteDownload is null;
+        CopyToMacButton.IsEnabled =
+            canTransfer &&
             _remoteCurrentPath is not null &&
             _localRootPath is not null &&
             LocalFileListView.SelectedItem is RetroLinkFileEntry
@@ -2193,6 +2973,20 @@ public partial class MainWindow : Window
                 IsDirectory: false,
                 IsReparsePoint: false,
                 FullPath: not null,
+            };
+        CopyFromMacButton.IsEnabled =
+            canTransfer &&
+            _localRootPath is not null &&
+            _localCurrentPath is not null &&
+            _remoteCurrentPath is not null &&
+            peer is not null &&
+            (peer.Capabilities & RetroLinkCapabilities.HostInitiatedCopy) !=
+                RetroLinkCapabilities.None &&
+            RemoteFileListView.SelectedItem is RetroLinkFileEntry
+            {
+                IsDirectory: false,
+                ProviderId: not null,
+                PathComponents: not null,
             };
     }
 

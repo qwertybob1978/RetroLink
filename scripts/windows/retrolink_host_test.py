@@ -658,8 +658,8 @@ def main() -> int:
     parser.add_argument("--baud", type=int, default=9600)
     parser.add_argument("--timeout", type=float, default=10.0)
     args = parser.parse_args()
-    if args.baud not in (9600, 19200, 38400, 57600):
-        parser.error("--baud must be 9600, 19200, 38400, or 57600")
+    if args.baud not in (9600, 19200, 38400, 57600, 115200):
+        parser.error("--baud must be 9600, 19200, 38400, 57600, or 115200")
     try:
         RetroLinkHostTest(args.port, args.target, args.baud, args.timeout).run()
     except (TestFailure, TimeoutError, OSError, serial.SerialException) as error:

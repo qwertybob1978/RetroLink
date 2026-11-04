@@ -19,6 +19,8 @@ public enum RetroLinkMessageType : byte
     TransferReady = 0x21,
     TransferComplete = 0x22,
     TransferCancel = 0x23,
+    CopyRequest = 0x24,
+    CopyRequestResult = 0x25,
     Error = 0x7F,
 }
 

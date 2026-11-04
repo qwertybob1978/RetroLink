@@ -1,69 +1,168 @@
 ﻿<Window x:Class="RetroLink.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialIcons="clr-namespace:Material.Icons.WPF;assembly=Material.Icons.WPF"
         Title="RetroLink 0.1" Height="720" Width="1180"
         MinHeight="540" MinWidth="860"
         Closing="Window_Closing">
     <DockPanel>
         <StackPanel DockPanel.Dock="Top">
-            <ToolBarTray>
-                <ToolBar>
-                    <Button Content="Refresh Ports" Click="RefreshPorts_Click" />
+            <Menu>
+                <MenuItem Header="_File">
+                    <MenuItem Header="Choose LOCAL _Root..." Click="ChooseLocalRoot_Click" />
+                </MenuItem>
+                <MenuItem Header="_Connection">
+                    <MenuItem Header="_Refresh Ports" Click="RefreshPorts_Click" />
+                    <MenuItem Header="_Connect" Click="Connect_Click" />
+                    <MenuItem Header="_Disconnect" Click="Disconnect_Click" />
                     <Separator />
-                    <TextBlock Text="COM port:" VerticalAlignment="Center" Margin="4,0" />
-                    <ComboBox x:Name="ComPortComboBox" Width="110" IsEditable="True" />
-                    <TextBlock Text="Baud:" VerticalAlignment="Center" Margin="8,0,4,0" />
-                    <ComboBox x:Name="BaudRateComboBox" Width="100" SelectedIndex="8">
-                        <ComboBoxItem Content="300" Tag="300" />
-                        <ComboBoxItem Content="600" Tag="600" />
-                        <ComboBoxItem Content="1200" Tag="1200" />
-                        <ComboBoxItem Content="1800" Tag="1800" />
-                        <ComboBoxItem Content="2400" Tag="2400" />
-                        <ComboBoxItem Content="3600" Tag="3600" />
-                        <ComboBoxItem Content="4800" Tag="4800" />
-                        <ComboBoxItem Content="7200" Tag="7200" />
-                        <ComboBoxItem Content="9600" Tag="9600" />
-                        <ComboBoxItem Content="14400" Tag="14400" />
-                        <ComboBoxItem Content="19200" Tag="19200" />
-                        <ComboBoxItem Content="28800" Tag="28800" />
-                        <ComboBoxItem Content="38400" Tag="38400" />
-                        <ComboBoxItem Content="57600" Tag="57600" />
-                    </ComboBox>
-                    <Button x:Name="ConnectButton" Content="Connect" Click="Connect_Click" />
-                    <Button x:Name="DisconnectButton" Content="Disconnect"
-                            Click="Disconnect_Click" IsEnabled="False" />
-                    <Separator />
-                    <Button x:Name="TakeControlButton" Content="Take Control"
-                            Click="TakeControl_Click" IsEnabled="False" />
-                    <Button x:Name="CopyToMacButton"
-                            ToolBar.OverflowMode="Never"
-                            ToolTip="Copy the selected local file to the open remote folder"
-                            AutomationProperties.Name="Copy selected local file to REMOTE"
-                            Click="CopyToMac_Click" IsEnabled="False">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock FontFamily="Segoe MDL2 Assets"
-                                       Text="&#xE898;" Margin="0,0,6,0" />
-                            <TextBlock Text="Copy to REMOTE" />
+                    <MenuItem Header="_Take Control" Click="TakeControl_Click" />
+                </MenuItem>
+                <MenuItem Header="_Transfer">
+                    <MenuItem Header="Copy LOCAL to REMOTE" Click="CopyToMac_Click" />
+                    <MenuItem Header="Copy REMOTE to LOCAL" Click="CopyFromMac_Click" />
+                </MenuItem>
+                <MenuItem Header="_Local">
+                    <MenuItem Header="_Up" Click="LocalUp_Click" />
+                    <MenuItem Header="_Refresh" Click="RefreshLocal_Click" />
+                    <MenuItem Header="_New Folder" Click="CreateDirectory_Click" />
+                    <MenuItem Header="_Rename" Click="RenameEntry_Click" />
+                    <MenuItem Header="_Delete" Click="DeleteEntry_Click" />
+                </MenuItem>
+            </Menu>
+            <Border Background="#F3F4F6" BorderBrush="#D0D0D0" BorderThickness="0,1,0,1"
+                    Padding="4">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled">
+                    <StackPanel Orientation="Horizontal">
+                        <StackPanel Margin="4,0,8,0">
+                            <TextBlock Text="CONNECTION" FontSize="10" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" />
+                            <ToolBar>
+                                <Button ToolTip="Refresh available ports"
+                                        AutomationProperties.Name="Refresh available ports"
+                                        Click="RefreshPorts_Click">
+                                    <materialIcons:MaterialIcon Kind="Refresh" Width="18" Height="18" />
+                                </Button>
+                                <TextBlock Text="Port" VerticalAlignment="Center" Margin="2,0" />
+                                <ComboBox x:Name="ComPortComboBox" Width="100" IsEditable="True" />
+                                <TextBlock Text="Baud" VerticalAlignment="Center" Margin="6,0,2,0" />
+                                <ComboBox x:Name="BaudRateComboBox" Width="86" SelectedIndex="14">
+                                    <ComboBoxItem Content="300" Tag="300" />
+                                    <ComboBoxItem Content="600" Tag="600" />
+                                    <ComboBoxItem Content="1200" Tag="1200" />
+                                    <ComboBoxItem Content="1800" Tag="1800" />
+                                    <ComboBoxItem Content="2400" Tag="2400" />
+                                    <ComboBoxItem Content="3600" Tag="3600" />
+                                    <ComboBoxItem Content="4800" Tag="4800" />
+                                    <ComboBoxItem Content="7200" Tag="7200" />
+                                    <ComboBoxItem Content="9600" Tag="9600" />
+                                    <ComboBoxItem Content="14400" Tag="14400" />
+                                    <ComboBoxItem Content="19200" Tag="19200" />
+                                    <ComboBoxItem Content="28800" Tag="28800" />
+                                    <ComboBoxItem Content="38400" Tag="38400" />
+                                    <ComboBoxItem Content="57600" Tag="57600" />
+                                    <ComboBoxItem Content="115200" Tag="115200" />
+                                </ComboBox>
+                                <Button x:Name="ConnectButton" ToolTip="Connect"
+                                        AutomationProperties.Name="Connect"
+                                        Click="Connect_Click">
+                                    <materialIcons:MaterialIcon Kind="LanConnect" Width="18" Height="18" />
+                                </Button>
+                                <Button x:Name="DisconnectButton" ToolTip="Disconnect"
+                                        AutomationProperties.Name="Disconnect"
+                                        Click="Disconnect_Click" IsEnabled="False">
+                                    <materialIcons:MaterialIcon Kind="LanDisconnect" Width="18" Height="18" />
+                                </Button>
+                                <Button x:Name="TakeControlButton" ToolTip="Take control"
+                                        AutomationProperties.Name="Take control"
+                                        Click="TakeControl_Click" IsEnabled="False">
+                                    <materialIcons:MaterialIcon Kind="AccountSwitch" Width="18" Height="18" />
+                                </Button>
+                            </ToolBar>
                         </StackPanel>
-                    </Button>
-                    <ProgressBar x:Name="TransferProgressBar" Width="180" Height="16"
-                                 Minimum="0" Maximum="100" Visibility="Collapsed"
-                                 VerticalAlignment="Center" Margin="6,0" />
-                    <TextBlock x:Name="RoleText" Text="Role: Disconnected"
-                               VerticalAlignment="Center" Margin="8,0" />
-                </ToolBar>
-                <ToolBar>
-                    <Button Content="Choose Local Root" Click="ChooseLocalRoot_Click" />
-                    <Button Content="Up" Click="LocalUp_Click" />
-                    <Button Content="Refresh" Click="RefreshLocal_Click" />
-                    <Separator />
-                    <Button Content="New Folder" Click="CreateDirectory_Click" />
-                    <Button Content="Rename" Click="RenameEntry_Click" />
-                    <Button Content="Delete" Click="DeleteEntry_Click" />
-                    <TextBlock x:Name="LocalPathText" Text="Choose a local root folder"
-                               VerticalAlignment="Center" Margin="8,0" />
-                </ToolBar>
-            </ToolBarTray>
+                        <StackPanel Margin="4,0,8,0">
+                            <TextBlock Text="TRANSFER" FontSize="10" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" />
+                            <ToolBar>
+                                <Button x:Name="CopyToMacButton"
+                                        ToolTip="Copy selected LOCAL file to the open REMOTE folder"
+                                        AutomationProperties.Name="Copy selected LOCAL file to REMOTE"
+                                        Click="CopyToMac_Click" IsEnabled="False">
+                                    <materialIcons:MaterialIcon Kind="Upload" Width="18" Height="18" />
+                                </Button>
+                                <Button x:Name="CopyFromMacButton"
+                                        ToolTip="Download selected REMOTE file to the current LOCAL folder"
+                                        AutomationProperties.Name="Copy selected REMOTE file to LOCAL"
+                                        Click="CopyFromMac_Click" IsEnabled="False">
+                                    <materialIcons:MaterialIcon Kind="Download" Width="18" Height="18" />
+                                </Button>
+                                <ProgressBar x:Name="TransferProgressBar" Width="160" Height="16"
+                                             Minimum="0" Maximum="100" Visibility="Collapsed"
+                                             VerticalAlignment="Center" Margin="6,0" />
+                            </ToolBar>
+                        </StackPanel>
+                        <StackPanel Margin="4,0,8,0">
+                            <TextBlock Text="LOCAL" FontSize="10" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" />
+                            <ToolBar>
+                                <Button ToolTip="Choose LOCAL root folder"
+                                        AutomationProperties.Name="Choose LOCAL root folder"
+                                        Click="ChooseLocalRoot_Click">
+                                    <materialIcons:MaterialIcon Kind="FolderOpen" Width="18" Height="18" />
+                                </Button>
+                                <Button ToolTip="Go up one LOCAL folder"
+                                        AutomationProperties.Name="Go up one LOCAL folder"
+                                        Click="LocalUp_Click">
+                                    <materialIcons:MaterialIcon Kind="ArrowUp" Width="18" Height="18" />
+                                </Button>
+                                <Button ToolTip="Refresh LOCAL folder"
+                                        AutomationProperties.Name="Refresh LOCAL folder"
+                                        Click="RefreshLocal_Click">
+                                    <materialIcons:MaterialIcon Kind="Refresh" Width="18" Height="18" />
+                                </Button>
+                                <Button ToolTip="Create LOCAL folder"
+                                        AutomationProperties.Name="Create LOCAL folder"
+                                        Click="CreateDirectory_Click">
+                                    <materialIcons:MaterialIcon Kind="FolderPlus" Width="18" Height="18" />
+                                </Button>
+                                <Button ToolTip="Rename selected entry"
+                                        AutomationProperties.Name="Rename selected entry"
+                                        Click="RenameEntry_Click">
+                                    <materialIcons:MaterialIcon Kind="Pencil" Width="18" Height="18" />
+                                </Button>
+                                <Button ToolTip="Delete selected entry"
+                                        AutomationProperties.Name="Delete selected entry"
+                                        Click="DeleteEntry_Click">
+                                    <materialIcons:MaterialIcon Kind="Delete" Width="18" Height="18" />
+                                </Button>
+                            </ToolBar>
+                            <TextBlock x:Name="LocalPathText"
+                                       Text="Choose a local root folder"
+                                       Width="220" Margin="4,0"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <StackPanel Margin="4,0,8,0">
+                            <TextBlock Text="REMOTE" FontSize="10" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" />
+                            <ToolBar>
+                                <Button x:Name="RemoteUpButton"
+                                        ToolTip="Go up one REMOTE folder"
+                                        AutomationProperties.Name="Go up one REMOTE folder"
+                                        Click="RemoteUp_Click" IsEnabled="False">
+                                    <materialIcons:MaterialIcon Kind="ArrowUp" Width="18" Height="18" />
+                                </Button>
+                            </ToolBar>
+                        </StackPanel>
+                        <StackPanel Margin="4,0">
+                            <TextBlock Text="ROLE" FontSize="10" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock x:Name="RoleText" Text="Disconnected"
+                                       VerticalAlignment="Center" Margin="8,6" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
         </StackPanel>
 
         <StatusBar DockPanel.Dock="Bottom">
@@ -110,14 +209,6 @@
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top" Margin="6">
                         <DockPanel>
-                            <Button x:Name="RemoteUpButton"
-                                    Content="Up"
-                                    ToolTip="Go up one level in the remote file list"
-                                    AutomationProperties.Name="Go up one level in the remote file list"
-                                    DockPanel.Dock="Right"
-                                    Click="RemoteUp_Click"
-                                    IsEnabled="False"
-                                    Margin="8,0,0,0" />
                             <TextBlock x:Name="RemoteDeviceText"
                                        Text="Not connected to a REMOTE RetroLink peer"
                                        FontWeight="SemiBold" />

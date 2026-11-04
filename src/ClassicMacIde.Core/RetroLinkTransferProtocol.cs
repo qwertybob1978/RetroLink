@@ -17,6 +17,16 @@ public sealed record RetroLinkCopyPrepare(
     bool Overwrite,
     byte TransferMode);
 
+public sealed record RetroLinkCopyRequest(
+    uint RoleEpoch,
+    ReadOnlyMemory<byte> ActiveEndpointId,
+    ReadOnlyMemory<byte> SourceEndpointId,
+    RetroLinkPath SourcePath,
+    ReadOnlyMemory<byte> DestinationEndpointId,
+    RetroLinkPath DestinationPath,
+    string DestinationName,
+    bool Overwrite);
+
 public sealed record RetroLinkTransferReady(
     ushort ResultCode,
     ulong StreamLength,
@@ -146,6 +156,119 @@ public static class RetroLinkTransferProtocol
         return request;
     }
 
+    public static byte[] EncodeCopyRequest(RetroLinkCopyRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ValidateCopyRequest(request);
+        using var buffer = new MemoryStream();
+        Span<byte> fixedPart = stackalloc byte[4 + EndpointIdLength * 2];
+        BinaryPrimitives.WriteUInt32BigEndian(fixedPart, request.RoleEpoch);
+        request.ActiveEndpointId.Span.CopyTo(fixedPart[4..]);
+        request.SourceEndpointId.Span.CopyTo(fixedPart[(4 + EndpointIdLength)..]);
+        buffer.Write(fixedPart);
+        WritePath(buffer, request.SourcePath);
+        buffer.Write(request.DestinationEndpointId.Span);
+        WritePath(buffer, request.DestinationPath);
+        var name = StrictUtf8.GetBytes(request.DestinationName);
+        buffer.WriteByte(checked((byte)name.Length));
+        buffer.Write(name);
+        buffer.WriteByte(request.Overwrite ? (byte)1 : (byte)0);
+        if (buffer.Length > RetroLinkProtocol.MaximumPayloadSize)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request),
+                "The COPY_REQUEST payload exceeds the frame limit.");
+        }
+
+        return buffer.ToArray();
+    }
+
+    public static RetroLinkCopyRequest DecodeCopyRequest(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 4 + EndpointIdLength * 2)
+        {
+            throw new InvalidDataException("The COPY_REQUEST payload is truncated.");
+        }
+
+        var roleEpoch = BinaryPrimitives.ReadUInt32BigEndian(payload);
+        var activeEndpointId = payload.Slice(4, EndpointIdLength).ToArray();
+        var sourceEndpointId = payload.Slice(4 + EndpointIdLength, EndpointIdLength).ToArray();
+        var offset = 4 + EndpointIdLength * 2;
+        var sourcePath = ReadPath(payload, ref offset);
+        if (payload.Length - offset < EndpointIdLength)
+        {
+            throw new InvalidDataException("The COPY_REQUEST destination endpoint is truncated.");
+        }
+
+        var destinationEndpointId = payload.Slice(offset, EndpointIdLength).ToArray();
+        offset += EndpointIdLength;
+        var destinationPath = ReadPath(payload, ref offset);
+        if (payload.Length - offset < 2)
+        {
+            throw new InvalidDataException("The COPY_REQUEST destination name is missing.");
+        }
+
+        var nameLength = payload[offset++];
+        if (nameLength == 0 || payload.Length - offset != nameLength + 1)
+        {
+            throw new InvalidDataException("The COPY_REQUEST name or trailer is invalid.");
+        }
+
+        string destinationName;
+        try
+        {
+            destinationName = StrictUtf8.GetString(payload.Slice(offset, nameLength));
+        }
+        catch (DecoderFallbackException error)
+        {
+            throw new InvalidDataException("The COPY_REQUEST name is not valid UTF-8.", error);
+        }
+
+        offset += nameLength;
+        var request = new RetroLinkCopyRequest(
+            roleEpoch,
+            activeEndpointId,
+            sourceEndpointId,
+            sourcePath,
+            destinationEndpointId,
+            destinationPath,
+            destinationName,
+            payload[offset] switch
+            {
+                0 => false,
+                1 => true,
+                _ => throw new InvalidDataException("The COPY_REQUEST overwrite flag is invalid."),
+            });
+        try
+        {
+            ValidateCopyRequest(request);
+        }
+        catch (ArgumentException error)
+        {
+            throw new InvalidDataException("The COPY_REQUEST fields are invalid.", error);
+        }
+
+        return request;
+    }
+
+    public static byte[] EncodeCopyRequestResult(ushort resultCode)
+    {
+        var payload = new byte[2];
+        BinaryPrimitives.WriteUInt16BigEndian(payload, resultCode);
+        return payload;
+    }
+
+    public static ushort DecodeCopyRequestResult(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length != 2)
+        {
+            throw new InvalidDataException(
+                "The COPY_REQUEST_RESULT payload has an invalid size.");
+        }
+
+        return BinaryPrimitives.ReadUInt16BigEndian(payload);
+    }
+
     public static byte[] EncodeTransferReady(RetroLinkTransferReady response)
     {
         ValidateTransferMode(response.TransferMode, response.MaximumBlockSize);
@@ -237,6 +360,29 @@ public static class RetroLinkTransferProtocol
         {
             throw new ArgumentException(
                 "The file size, transfer format, or transfer mode is unsupported.",
+                nameof(request));
+        }
+    }
+
+    private static void ValidateCopyRequest(RetroLinkCopyRequest request)
+    {
+        ValidateEndpointId(request.ActiveEndpointId, nameof(request.ActiveEndpointId));
+        ValidateEndpointId(request.SourceEndpointId, nameof(request.SourceEndpointId));
+        ValidateEndpointId(
+            request.DestinationEndpointId,
+            nameof(request.DestinationEndpointId));
+        ValidatePath(request.SourcePath);
+        ValidatePath(request.DestinationPath);
+        var name = StrictUtf8.GetByteCount(request.DestinationName);
+        if (name is 0 or > 255 ||
+            request.DestinationName is "." or ".." ||
+            request.DestinationName.Contains('/') ||
+            request.DestinationName.Contains('\\') ||
+            request.DestinationName.Contains(':') ||
+            request.DestinationName.IndexOf('\0') >= 0)
+        {
+            throw new ArgumentException(
+                "The destination name is invalid or too long.",
                 nameof(request));
         }
     }
