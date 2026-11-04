@@ -14,6 +14,8 @@ firmware uses the same terms from its own point of view.
 
 Requires Windows 10/11 x64 and the .NET 10 SDK.
 
+![RetroLink Windows application](docs/images/retrolink-windows.png)
+
 ```powershell
 dotnet build RetroLink.slnx --configuration Release
 dotnet run --project src/RetroLink/RetroLink.csproj
