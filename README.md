@@ -32,6 +32,10 @@ The output is `RELEASE/Windows/RetroLink.exe`. NuGet packages are restored
 during the first build. Serial communication requires a physical COM port or
 a separately installed virtual null-modem driver.
 
+## Classic Macintosh
+
+![RetroLink classic Macintosh application](docs/images/retrolink-macintosh.png)
+
 ## Other Platforms
 
 - [DOS and Macintosh build environment setup](docs/setup-environment.md)
