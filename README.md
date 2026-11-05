@@ -40,6 +40,11 @@ a separately installed virtual null-modem driver.
 
 ![RetroLink classic Macintosh application](docs/images/retrolink-macintosh.png)
 
+## MS-DOS in CGA Monochrome mode for 8088
+
+![RetroLink MS-DOS application](docs/images/retrolink-msdos.png)
+
+
 ## Other Platforms
 
 - [DOS and Macintosh build environment setup](docs/setup-environment.md)
