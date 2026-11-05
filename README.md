@@ -1,7 +1,11 @@
 # RetroLink
 
 RetroLink is a serial file-transfer application with Windows, classic
-Macintosh, and MS-DOS peers. 
+Macintosh, and MS-DOS peers. More peers will be added later. The tool is meant 
+for file transfer from any, to any target. Most logically it will be used to 
+transfer from a Windows PC to a legacy target, but it's perfectly possible to
+connect MS-DOS to Macintosh, or Commodore 64 to CP/M. (Those targets are a 
+work in progress currently, but it's always good to have a goal in mind)
 
 ## Terminology
 
