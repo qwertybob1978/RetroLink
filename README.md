@@ -44,6 +44,9 @@ a separately installed virtual null-modem driver.
 
 ![RetroLink MS-DOS application](docs/images/retrolink-msdos.png)
 
+## MS-DOS in Hercules Monochrome mode for 8088 in FreeRTOS/DOS runtime (in progress)
+
+![RetroLink MS-DOS application](docs/images/dos_hercules.png)
 
 ## Other Platforms
 
