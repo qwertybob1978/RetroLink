@@ -1,3 +1,9 @@
+This project is released under GPLv3.
+
+Commercial licensing options are available from the copyright holder.
+The existence of the GPLv3 version does not limit the copyright holder's
+right to grant separate commercial licenses under different terms.
+
 # RetroLink
 
 RetroLink is a serial file-transfer application with Windows, classic
